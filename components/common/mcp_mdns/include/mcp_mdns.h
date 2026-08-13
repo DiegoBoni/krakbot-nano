@@ -19,8 +19,8 @@ extern "C" {
 #define MCP_MDNS_SERVICE_PROTO       "_tcp"
 #define MCP_MDNS_DEFAULT_TIMEOUT_MS  3000
 #define MCP_MDNS_DEFAULT_ENDPOINT    "mcp"
-#define MCP_MDNS_DEFAULT_HOSTNAME    "esp-claw"
-#define MCP_MDNS_DEFAULT_INSTANCE    "ESP-Claw"
+#define MCP_MDNS_DEFAULT_HOSTNAME    "krakbot-nano"
+#define MCP_MDNS_DEFAULT_INSTANCE    "KrakBot Nano"
 #define MCP_MDNS_DEFAULT_SERVER_PORT 18791
 #define MCP_MDNS_DEFAULT_CTRL_PORT   18792
 

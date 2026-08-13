@@ -57,7 +57,7 @@ static const char *APP_STARTUP_EVENT_KEY = "boot_completed";
 #endif
 
 #define APP_SYSTEM_PROMPT_COMMON \
-    "You are the ESP-Claw. " \
+    "You are KrakBot Nano. " \
     "Answer briefly and plainly. " \
     "Treat Skills List as a catalog of optional skills. " \
     "Use 'activate_skill' to load skills. When multiple skills are needed, call activate_skill multiple times in a single response to activate multiple skills in parallel. " \

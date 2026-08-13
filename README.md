@@ -8,9 +8,11 @@
     </picture>
   </a>
 
-  <h1>ESP-Claw 🦞 AI Agent Framework for IoT Devices</h1>
+  <h1>KrakBot Nano 🦞 AI Agent Framework for IoT Devices</h1>
 
   <h3>💬 Chat as Creation · 🚀 Millisecond Response · 🧩 Smart and Extensible · 😋 Grows with You</h3>
+
+  <p><em>KrakBot Nano is a personal fork of <a href="https://github.com/espressif/esp-claw">Espressif's ESP-Claw</a>, targeting the ESP32-S3 N16R8 DevKitC-1.</em></p>
 
   <p>
     <a href="https://www.espressif.com">

@@ -287,7 +287,7 @@ export const Sidebar: Component<SidebarProps> = (props) => {
               when={isMobileDrawer()}
               fallback={
                 <span class="block text-[0.7rem] font-bold text-[var(--color-text-muted)] truncate">
-                  ESP-Claw Web Config
+                  KrakBot Nano Web Config
                 </span>
               }
             >

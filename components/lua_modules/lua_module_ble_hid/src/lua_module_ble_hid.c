@@ -31,7 +31,7 @@
 #include "services/gap/ble_svc_gap.h"
 
 #define LUA_MODULE_BLE_HID_NAME "ble_hid"
-#define LUA_HID_DEFAULT_NAME "esp-claw-hid"
+#define LUA_HID_DEFAULT_NAME "krakbot-nano-hid"
 #define LUA_HID_NAME_MAX 29
 #define LUA_HID_MAP_INDEX 0
 #define REPORT_ID_CONSUMER 1
@@ -1001,7 +1001,7 @@ static esp_err_t init_hid_device(const char *name)
         .version = 0x0100,
         .device_name = name,
         .manufacturer_name = "Espressif",
-        .serial_number = "esp-claw",
+        .serial_number = "krakbot-nano",
         .report_maps = s_report_maps,
         .report_maps_len = sizeof(s_report_maps) / sizeof(s_report_maps[0]),
     };

@@ -8,7 +8,9 @@
     </picture>
   </a>
 
-  <h1>ESP-Claw 🦞 物联网设备 AI 智能体框架</h1>
+  <h1>KrakBot Nano 🦞 物联网设备 AI 智能体框架</h1>
+
+  <p><em>KrakBot Nano 是 <a href="https://github.com/espressif/esp-claw">Espressif ESP-Claw</a> 的个人分支，面向 ESP32-S3 N16R8 DevKitC-1。</em></p>
 
   <h3>💬聊天即造物 · 🚀毫秒级响应 · 🧩智能可扩展 · 😋越用越懂你</h3>
 

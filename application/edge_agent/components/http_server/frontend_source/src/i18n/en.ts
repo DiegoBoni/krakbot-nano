@@ -1,5 +1,5 @@
 export const en = {
-  docTitle: 'ESP-Claw Settings',
+  docTitle: 'KrakBot Nano Settings',
   pageTitle: 'Device Settings',
   pageSubtitle: 'View system operation basic information and status',
 
@@ -26,7 +26,7 @@ export const en = {
   navFiles: 'Files',
   navWebIm: 'Web Chat',
 
-  webimDesc: 'Interact with ESP-Claw in real time via WebSocket.',
+  webimDesc: 'Interact with KrakBot Nano in real time via WebSocket.',
   webimSend: 'Send',
   webimOnline: 'Online',
   webimPlaceholder: 'Message…',
@@ -180,7 +180,7 @@ export const en = {
   wechatLoginOpenLink: 'Open login link',
 
   sectionWebReqSearch: 'Search',
-  webreqSearchNote: 'Optional. If set, ESP-Claw can search online.',
+  webreqSearchNote: 'Optional. If set, KrakBot Nano can search online.',
   sectionWebReqNetwork: 'Network Requests',
   webreqBraveKey: 'Brave Search API Key',
   webreqTavilyKey: 'Tavily API Key',

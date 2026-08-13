@@ -1,7 +1,7 @@
 import type { Dict } from './en';
 
 export const zhCn: Dict = {
-  docTitle: 'ESP-Claw 设置',
+  docTitle: 'KrakBot Nano 设置',
   pageTitle: '设备设置',
   pageSubtitle: '查看系统运作基本信息与状态',
 
@@ -28,7 +28,7 @@ export const zhCn: Dict = {
   navFiles: '文件管理',
   navWebIm: '在线聊天',
 
-  webimDesc: '通过 WebSocket 与 ESP-Claw 实时互动。',
+  webimDesc: '通过 WebSocket 与 KrakBot Nano 实时互动。',
   webimSend: '发送',
   webimOnline: '在线',
   webimPlaceholder: '输入消息…',
@@ -175,7 +175,7 @@ export const zhCn: Dict = {
   wechatLoginOpenLink: '打开登录链接',
 
   sectionWebReqSearch: '搜索',
-  webreqSearchNote: '可选。如填写，ESP-Claw 可在运行中检索在线资源。',
+  webreqSearchNote: '可选。如填写，KrakBot Nano 可在运行中检索在线资源。',
   sectionWebReqNetwork: '网络请求',
   webreqBraveKey: 'Brave Search API Key',
   webreqTavilyKey: 'Tavily API Key',

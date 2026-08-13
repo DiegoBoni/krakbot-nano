@@ -1,8 +1,8 @@
 {
-  "name": "esp-claw-frontend",
+  "name": "krakbot-nano-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "SolidJS-based web UI for ESP-Claw device settings",
+  "description": "SolidJS-based web UI for KrakBot Nano device settings",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

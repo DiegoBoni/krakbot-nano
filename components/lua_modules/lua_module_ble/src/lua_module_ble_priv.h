@@ -42,7 +42,7 @@
 
 #define LUA_MODULE_BLE_NAME "ble"
 
-#define LUA_BLE_DEFAULT_NAME      "esp-claw"
+#define LUA_BLE_DEFAULT_NAME      "krakbot-nano"
 #define LUA_BLE_ADV_NAME_MAX      28
 #define LUA_BLE_ADV_UUID16_MAX    4
 #define LUA_BLE_ADV_UUID32_MAX    4

@@ -1,4 +1,4 @@
 board: esp32_S3_DevKitC_1
 chip: esp32s3
-description: "ESP32-S3-DevKitC-1 Development Board"
+description: "ESP32-S3-DevKitC-1 Development Board (N16R8: 16MB flash / 8MB octal PSRAM)"
 manufacturer: "ESPRESSIF"
