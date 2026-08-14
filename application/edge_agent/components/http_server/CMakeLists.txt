@@ -14,6 +14,7 @@ endif()
 
 set(http_server_srcs
     "http_server_core.c"
+    "http_server_auth.c"
     "http_server_assets.c"
     "http_server_capabilities_api.c"
     "http_server_config_api.c"
@@ -33,11 +34,17 @@ set(http_server_requires
     claw_cap
     esp_http_server
     heap
+    mbedtls
 )
 
 if(CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER)
     list(APPEND http_server_srcs "http_server_lua_app_api.c")
     list(APPEND http_server_requires lua_module_http_server)
+endif()
+
+if(CONFIG_APP_CLAW_CAP_MCP_CLIENT)
+    list(APPEND http_server_srcs "http_server_mcp_api.c")
+    list(APPEND http_server_requires cap_mcp_client)
 endif()
 
 idf_component_register(

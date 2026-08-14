@@ -40,6 +40,8 @@ const PROVIDER_LINKS: Record<string, ExternalLinkPair> = {
 
 export const TAVILY_API_KEY_URL = 'https://app.tavily.com/';
 export const BRAVE_API_KEY_URL = 'https://api-dashboard.search.brave.com/app/keys';
+export const GROQ_API_KEY_URL = 'https://console.groq.com/keys';
+export const OPENAI_API_KEY_URL = 'https://platform.openai.com/api-keys';
 
 export function getProviderLinks(key: string): ExternalLinkPair | undefined {
   return PROVIDER_LINKS[key];

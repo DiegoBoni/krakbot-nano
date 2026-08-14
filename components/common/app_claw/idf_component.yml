@@ -89,6 +89,16 @@ dependencies:
       - if: $CONFIG{APP_CLAW_CAP_WEB_SEARCH} == True
     path: ../../claw_capabilities/cap_web_search
 
+  cap_groq_transcribe:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_GROQ_TRANSCRIBE} == True
+    path: ../../claw_capabilities/cap_groq_transcribe
+
+  cap_openai_tts:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_OPENAI_TTS} == True
+    path: ../../claw_capabilities/cap_openai_tts
+
   claw_cap:
     path: ../../claw_modules/claw_cap
 

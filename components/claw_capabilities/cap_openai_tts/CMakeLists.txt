@@ -1,0 +1,11 @@
+idf_component_register(
+    SRCS
+        "src/cap_openai_tts.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        claw_cap
+        claw_utils
+        esp_http_client
+        http_reuse
+)

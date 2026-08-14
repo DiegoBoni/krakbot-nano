@@ -23,6 +23,11 @@ typedef struct {
 
 esp_err_t cap_im_tg_register_group(void);
 esp_err_t cap_im_tg_set_token(const char *bot_token);
+/**
+ * @param allowed_chat_ids Comma-separated Telegram chat/user IDs allowed to
+ *        interact with the bot. NULL or empty means open to everyone.
+ */
+esp_err_t cap_im_tg_set_allowed_chat_ids(const char *allowed_chat_ids);
 esp_err_t cap_im_tg_set_attachment_config(
     const cap_im_tg_attachment_config_t *config);
 esp_err_t cap_im_tg_start(void);

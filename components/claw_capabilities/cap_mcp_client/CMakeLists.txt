@@ -3,12 +3,14 @@ idf_component_register(
         "src/cap_mcp_client.c"
         "src/cap_mcp_client_core.c"
         "src/cap_mcp_discover_core.c"
+        "src/cap_mcp_registry.c"
     INCLUDE_DIRS
         "include"
     PRIV_INCLUDE_DIRS
         "src/priv_include"
     REQUIRES
         claw_cap
+        claw_core
         esp_http_client
         mcp-c-sdk
 )

@@ -64,6 +64,12 @@
 #if CONFIG_APP_CLAW_CAP_WEB_SEARCH
 #include "cap_web_search.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_GROQ_TRANSCRIBE
+#include "cap_groq_transcribe.h"
+#endif
+#if CONFIG_APP_CLAW_CAP_OPENAI_TTS
+#include "cap_openai_tts.h"
+#endif
 #include "claw_cap.h"
 #if CONFIG_APP_CLAW_CAP_MEMORY
 #include "claw_memory.h"
@@ -522,6 +528,9 @@ static esp_err_t app_cap_register_im_tg(const app_claw_config_t *config,
                             TAG, "Failed to set Telegram bot token");
     }
 
+    ESP_RETURN_ON_ERROR(cap_im_tg_set_allowed_chat_ids(config->tg_allowed_chat_ids),
+                        TAG, "Failed to set Telegram allowed chat IDs");
+
     return ESP_OK;
 }
 #endif
@@ -715,6 +724,85 @@ static esp_err_t app_cap_register_web_search(const app_claw_config_t *config,
 }
 #endif
 
+#if CONFIG_APP_CLAW_CAP_GROQ_TRANSCRIBE
+static esp_err_t app_cap_prepare_groq_transcribe(const app_claw_config_t *config,
+                                                 const app_claw_storage_paths_t *paths)
+{
+    (void)paths;
+
+    if (config->asr_api_key[0]) {
+        ESP_RETURN_ON_ERROR(cap_groq_transcribe_set_api_key(config->asr_api_key),
+                            TAG, "Failed to set Groq API key");
+    }
+    if (config->asr_model[0]) {
+        ESP_RETURN_ON_ERROR(cap_groq_transcribe_set_model(config->asr_model),
+                            TAG, "Failed to set Groq transcription model");
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t app_cap_register_groq_transcribe(const app_claw_config_t *config,
+                                                   const app_claw_storage_paths_t *paths)
+{
+    (void)config;
+    (void)paths;
+    return cap_groq_transcribe_register_group();
+}
+#endif
+
+#if CONFIG_APP_CLAW_CAP_OPENAI_TTS
+static esp_err_t app_cap_prepare_openai_tts(const app_claw_config_t *config,
+                                            const app_claw_storage_paths_t *paths)
+{
+    bool use_groq = strcmp(config->tts_provider, "groq") == 0;
+    /* A Groq API key is a single platform-wide key shared by chat, Whisper
+     * transcription, and TTS, so a Groq LLM key is just as valid as the
+     * dedicated ASR key for authenticating TTS requests. Without this,
+     * users who only configured Groq as their LLM backend (and never set
+     * up Voice Transcription) got a silently unconfigured TTS key. */
+    bool llm_is_groq = strstr(config->llm_base_url, "groq.com") != NULL;
+    /* Reuse the key already configured elsewhere for the same provider (the
+     * Groq key from Voice Transcription or LLM Settings, or the OpenAI key
+     * from LLM Settings) unless the user explicitly set a dedicated TTS key
+     * override. */
+    const char *effective_key = config->tts_api_key[0] ? config->tts_api_key :
+                                 use_groq ? (config->asr_api_key[0] ? config->asr_api_key :
+                                             (llm_is_groq ? config->llm_api_key : "")) :
+                                 config->llm_api_key;
+
+    ESP_RETURN_ON_ERROR(cap_openai_tts_set_cache_dir(paths->tts_cache_root),
+                        TAG, "Failed to set TTS cache dir");
+    ESP_RETURN_ON_ERROR(cap_openai_tts_set_provider(config->tts_provider),
+                        TAG, "Failed to set TTS provider");
+    if (effective_key[0]) {
+        ESP_RETURN_ON_ERROR(cap_openai_tts_set_api_key(effective_key),
+                            TAG, "Failed to set TTS API key");
+    } else {
+        ESP_LOGW(TAG, "TTS provider '%s' has no API key configured (set TTS, ASR, or LLM key)",
+                config->tts_provider);
+    }
+    if (config->tts_voice[0]) {
+        ESP_RETURN_ON_ERROR(cap_openai_tts_set_voice(config->tts_voice),
+                            TAG, "Failed to set TTS voice");
+    }
+    if (config->tts_model[0]) {
+        ESP_RETURN_ON_ERROR(cap_openai_tts_set_model(config->tts_model),
+                            TAG, "Failed to set TTS model");
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t app_cap_register_openai_tts(const app_claw_config_t *config,
+                                             const app_claw_storage_paths_t *paths)
+{
+    (void)config;
+    (void)paths;
+    return cap_openai_tts_register_group();
+}
+#endif
+
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
 static esp_err_t app_cap_register_router_mgr(const app_claw_config_t *config,
                                              const app_claw_storage_paths_t *paths)
@@ -794,6 +882,12 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
 #if CONFIG_APP_CLAW_CAP_WEB_SEARCH
     { "cap_web_search", "Web Search", "Register web search cap", true, app_cap_prepare_web_search, app_cap_register_web_search },
 #endif
+#if CONFIG_APP_CLAW_CAP_GROQ_TRANSCRIBE
+    { "cap_groq_transcribe", "Groq Transcribe", "Register Groq audio transcription cap", true, app_cap_prepare_groq_transcribe, app_cap_register_groq_transcribe },
+#endif
+#if CONFIG_APP_CLAW_CAP_OPENAI_TTS
+    { "cap_openai_tts", "OpenAI TTS", "Register OpenAI text-to-speech cap", true, app_cap_prepare_openai_tts, app_cap_register_openai_tts },
+#endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", "Register router manager cap", true, NULL, app_cap_register_router_mgr },
 #endif
@@ -850,6 +944,12 @@ static const app_capability_group_info_t s_capability_group_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_WEB_SEARCH
     { "cap_web_search", "Web Search", false },
+#endif
+#if CONFIG_APP_CLAW_CAP_GROQ_TRANSCRIBE
+    { "cap_groq_transcribe", "Groq Transcribe", false },
+#endif
+#if CONFIG_APP_CLAW_CAP_OPENAI_TTS
+    { "cap_openai_tts", "OpenAI TTS", false },
 #endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", false },

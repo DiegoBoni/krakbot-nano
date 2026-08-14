@@ -61,6 +61,7 @@ static const config_field_def_t CONFIG_FIELDS[] = {
     CONFIG_FIELD("im",           feishu_app_id),
     CONFIG_FIELD("im",           feishu_app_secret),
     CONFIG_FIELD("im",           tg_bot_token),
+    CONFIG_FIELD("im",           tg_allowed_chat_ids),
     CONFIG_FIELD("im",           wechat_token),
     CONFIG_FIELD("im",           wechat_base_url),
     CONFIG_FIELD("im",           wechat_cdn_base_url),
@@ -69,6 +70,14 @@ static const config_field_def_t CONFIG_FIELDS[] = {
     CONFIG_FIELD("search",       search_brave_key),
     CONFIG_FIELD("search",       search_tavily_key),
     CONFIG_FIELD("search",       search_http_allowlist),
+
+    CONFIG_FIELD("asr",          asr_api_key),
+    CONFIG_FIELD("asr",          asr_model),
+
+    CONFIG_FIELD("tts",          tts_api_key),
+    CONFIG_FIELD("tts",          tts_voice),
+    CONFIG_FIELD("tts",          tts_model),
+    CONFIG_FIELD("tts",          tts_provider),
 
     CONFIG_FIELD("capabilities", enabled_cap_groups),
     CONFIG_FIELD("capabilities", llm_visible_cap_groups),
@@ -209,6 +218,10 @@ static esp_err_t emit_config(httpd_req_t *req,
 
 static esp_err_t config_get_handler(httpd_req_t *req)
 {
+    if (http_server_require_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
     http_server_ctx_t *ctx = http_server_ctx();
     app_config_t *config = NULL;
     esp_err_t err;
@@ -290,6 +303,10 @@ static esp_err_t config_get_handler(httpd_req_t *req)
 
 static esp_err_t config_post_handler(httpd_req_t *req)
 {
+    if (http_server_require_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
     http_server_ctx_t *ctx = http_server_ctx();
     app_config_t *config = NULL;
     esp_err_t err;

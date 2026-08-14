@@ -921,7 +921,7 @@ export const SetupWizardPage: Component<SetupWizardPageProps> = (props) => {
   );
 
   return (
-    <div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(232,54,45,0.12),transparent_36%),linear-gradient(180deg,#16161b_0%,#0e1014_100%)]">
+    <div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(0,229,204,0.12),transparent_36%),linear-gradient(180deg,#0d1117_0%,#010409_100%)]">
       <div class="max-w-4xl mx-auto px-4 py-8 sm:px-6 sm:py-10">
         <div class="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-card)] overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
           <div class="px-6 py-6 border-b border-[var(--color-border-subtle)]">

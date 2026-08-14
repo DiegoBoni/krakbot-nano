@@ -201,6 +201,11 @@ void claw_llm_runtime_deinit(claw_llm_runtime_t *runtime)
     free(runtime);
 }
 
+const char *claw_llm_runtime_get_model(const claw_llm_runtime_t *runtime)
+{
+    return runtime ? runtime->config.model : NULL;
+}
+
 void claw_llm_response_free(claw_llm_response_t *response)
 {
     size_t i;

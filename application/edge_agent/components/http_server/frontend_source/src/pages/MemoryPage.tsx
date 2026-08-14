@@ -202,7 +202,7 @@ export const MemoryPage: Component = () => {
                       spellcheck={false}
                       readonly={!file.editable}
                       class={[
-                        'w-full min-h-[220px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] p-3 text-[0.88rem] leading-6 font-mono text-[var(--color-text-primary)] focus:outline-none focus:border-[rgba(232,54,45,0.4)]',
+                        'w-full min-h-[220px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] p-3 text-[0.88rem] leading-6 font-mono text-[var(--color-text-primary)] focus:outline-none focus:border-[rgba(0,229,204,0.4)]',
                         file.titleKey === 'memoryCardLongTerm' ? 'min-h-[300px]' : '',
                       ].join(' ')}
                       value={data().current}

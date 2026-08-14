@@ -224,6 +224,11 @@ esp_err_t claw_core_llm_chat_messages(claw_core_handle_t core,
     if (err == ESP_OK) {
         err = claw_llm_runtime_chat(core->llm_runtime, &request, out_response, out_error_message);
     }
+    if (err == ESP_OK) {
+        core->llm_usage_prompt_tokens += out_response->prompt_tokens;
+        core->llm_usage_completion_tokens += out_response->completion_tokens;
+        core->llm_usage_request_count++;
+    }
     if (core->llm_lock) {
         xSemaphoreGive(core->llm_lock);
     }
@@ -231,6 +236,29 @@ esp_err_t claw_core_llm_chat_messages(claw_core_handle_t core,
         ESP_LOGE(TAG, "chat_messages: runtime chat failed err=0x%x", err);
     }
     return err;
+}
+
+void claw_core_llm_get_usage_totals(claw_core_handle_t core,
+                                    claw_core_llm_usage_totals_t *out_totals)
+{
+    if (!core || !out_totals) {
+        return;
+    }
+    memset(out_totals, 0, sizeof(*out_totals));
+    if (core->llm_lock) {
+        xSemaphoreTake(core->llm_lock, portMAX_DELAY);
+    }
+    out_totals->prompt_tokens = core->llm_usage_prompt_tokens;
+    out_totals->completion_tokens = core->llm_usage_completion_tokens;
+    out_totals->request_count = core->llm_usage_request_count;
+    {
+        const char *model = core->llm_runtime ? claw_llm_runtime_get_model(core->llm_runtime) :
+                            core->llm_config.model;
+        strlcpy(out_totals->model, model ? model : "", sizeof(out_totals->model));
+    }
+    if (core->llm_lock) {
+        xSemaphoreGive(core->llm_lock);
+    }
 }
 
 esp_err_t claw_core_llm_infer_media(claw_core_handle_t core,

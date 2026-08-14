@@ -1,0 +1,11 @@
+idf_component_register(
+    SRCS
+        "src/cap_groq_transcribe.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        claw_cap
+        claw_event_router
+        esp_http_client
+        http_reuse
+)

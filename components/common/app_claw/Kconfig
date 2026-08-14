@@ -171,6 +171,25 @@ menu "App Claw Config"
                 Enable the web search capability and keep app_claw's direct dependency
                 on cap_web_search.
 
+        config APP_CLAW_CAP_GROQ_TRANSCRIBE
+            bool "Enable Groq audio transcription capability"
+            select APP_CLAW_CAP_EVENT_ROUTER
+            default y
+            help
+                Enable the Groq audio transcription capability and keep app_claw's
+                direct dependency on cap_groq_transcribe. Used to transcribe inbound
+                IM voice/audio attachments (e.g. Telegram voice notes) via the Groq
+                Whisper API.
+
+        config APP_CLAW_CAP_OPENAI_TTS
+            bool "Enable OpenAI text-to-speech capability"
+            default y
+            help
+                Enable the OpenAI text-to-speech capability and keep app_claw's
+                direct dependency on cap_openai_tts. Used to synthesize voice
+                replies (e.g. the Telegram "Listen" button) via the OpenAI TTS
+                API.
+
         config APP_CLAW_CAP_ROUTER_MGR
             bool "Enable router manager capability"
             select APP_CLAW_CAP_EVENT_ROUTER

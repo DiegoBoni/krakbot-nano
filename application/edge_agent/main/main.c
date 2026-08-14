@@ -399,11 +399,9 @@ void app_main(void)
         wifi_manager_status_t status = {0};
         wifi_manager_get_status(&status);
         if (status.ap_active) {
-            const char *portal_auth = s_config->ap_password[0] ? "wpa2" : "open";
             ESP_LOGW(TAG,
-                     "*** Provisioning portal: SSID=\"%s\" (auth=%s) IP=%s URL=http://%s/ ***",
+                     "*** Provisioning portal: SSID=\"%s\" (auth=wpa2) IP=%s URL=http://%s/ ***",
                      status.ap_ssid,
-                     portal_auth,
                      status.ap_ip,
                      status.ap_ip);
         }

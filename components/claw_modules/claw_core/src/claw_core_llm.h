@@ -26,6 +26,13 @@ typedef struct {
 typedef claw_llm_tool_call_t claw_core_llm_tool_call_t;
 typedef claw_llm_response_t claw_core_llm_response_t;
 
+typedef struct {
+    char model[64];
+    uint64_t prompt_tokens;
+    uint64_t completion_tokens;
+    uint32_t request_count;
+} claw_core_llm_usage_totals_t;
+
 esp_err_t claw_core_llm_init(const claw_core_llm_config_t *config,
                              claw_llm_runtime_t **out_runtime,
                              char **out_error_message);
@@ -41,3 +48,5 @@ esp_err_t claw_core_llm_infer_media(claw_core_handle_t core,
                                     char **out_error_message);
 esp_err_t claw_core_llm_register_custom_backend(const claw_llm_custom_backend_registration_t *registration);
 void claw_core_llm_response_free(claw_core_llm_response_t *response);
+void claw_core_llm_get_usage_totals(claw_core_handle_t core,
+                                    claw_core_llm_usage_totals_t *out_totals);

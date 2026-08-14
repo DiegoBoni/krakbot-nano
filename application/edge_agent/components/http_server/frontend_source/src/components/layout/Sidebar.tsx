@@ -4,8 +4,10 @@ import {
   Bot,
   DatabaseZap,
   Folder,
+  Mic,
   MessageSquareCode,
   MessagesSquare,
+  Plug,
   Search,
   Settings,
   SquareFunction,
@@ -29,6 +31,8 @@ const IconCaps: Component = () => <Blocks class={iconClass} />;
 const IconSkills: Component = () => <SquareFunction class={iconClass} />;
 const IconFiles: Component = () => <Folder class={iconClass} />;
 const IconWebIm: Component = () => <MessagesSquare class={iconClass} />;
+const IconMcp: Component = () => <Plug class={iconClass} />;
+const IconVoice: Component = () => <Mic class={iconClass} />;
 
 export type LeafNode = {
   kind: 'leaf';
@@ -39,11 +43,13 @@ export type LeafNode = {
     | 'navLlm'
     | 'navIm'
     | 'navWebReq'
+    | 'navVoice'
     | 'navMemory'
     | 'navCapabilities'
     | 'navLuaModules'
     | 'navFiles'
-    | 'navWebIm';
+    | 'navWebIm'
+    | 'navMcp';
   icon: Component;
 };
 export type GroupNode = {
@@ -67,11 +73,13 @@ export const NAV_TREE: NavNode[] = [
       { kind: 'leaf', id: 'llm', labelKey: 'navLlm', icon: IconLlm },
       { kind: 'leaf', id: 'im', labelKey: 'navIm', icon: IconIm },
       { kind: 'leaf', id: 'webreq', labelKey: 'navWebReq', icon: IconSearch },
+      { kind: 'leaf', id: 'voice', labelKey: 'navVoice', icon: IconVoice },
     ],
   },
   { kind: 'leaf', id: 'memory', labelKey: 'navMemory', icon: IconMemory },
   { kind: 'leaf', id: 'webim', labelKey: 'navWebIm', icon: IconWebIm },
   { kind: 'leaf', id: 'capabilities', labelKey: 'navCapabilities', icon: IconCaps },
+  { kind: 'leaf', id: 'mcp', labelKey: 'navMcp', icon: IconMcp },
   { kind: 'leaf', id: 'skills', labelKey: 'navLuaModules', icon: IconSkills },
   { kind: 'leaf', id: 'files', labelKey: 'navFiles', icon: IconFiles },
 ];

@@ -37,9 +37,24 @@
 
 **ESP-Claw** 是乐鑫推出的面向物联网设备的 **Chat Coding「聊天造物」** 式 AI Agent 框架，以对话定义设备行为，在乐鑫芯片上本地完成感知、决策与执行的完整闭环。ESP-Claw 自 OpenClaw 理念出发，用 C 语言重新实现，轻盈、智能、成长。仅需一块几美元的 ESP32 系列芯片，便可体验 ESP-Claw 的轻灵特性。
 
+**KrakBot Nano** 在此基础上专注适配单一开发板（ESP32-S3 N16R8 DevKitC-1），并新增了语音、多服务器 MCP、更严格的 Telegram 权限控制，以及更安全的默认配置，详见下方 [🦑 KrakBot Nano 新特性](#-krakbot-nano-新特性)。
+
 <div align="center">
   <img alt="From traditional IoT to Edge Agent" src="./docs/static/from-traditional-iot-to-edge-agent.webp" width="90%" />
 </div>
+
+## 🦑 KrakBot Nano 新特性
+
+在 ESP-Claw 已有能力之上，本分支新增：
+
+- 🎙️ **语音输入** — 收到的 Telegram 语音消息会通过 Groq Whisper API 自动转写为文字并交给智能体处理，无需打字即可对话。
+- 🔊 **语音回复** — 智能体的回复可通过 OpenAI TTS（多语言，含西班牙语）或 Groq TTS（免费额度，仅英语/阿拉伯语）合成为语音消息，可在新增的**语音**设置页选择音色、性别预设与模型。
+- 🔌 **多服务器 MCP 与 Composio 集成** — MCP 客户端现在维护一份可持久化的远程 MCP 服务器注册表（URL、Endpoint、认证方式），并提供 `mcp_list_servers`/`mcp_list_tools`/`mcp_call_tool` 能力。新增的 **MCP** 设置页支持通过单个 [Composio](https://composio.dev) API Key 一键接入 Gmail、日历等 500+ 应用。
+- 🔒 **Telegram 白名单** — 通过 `tgAllowedChatIds`（格式为 `id` 或 `id:name`，逗号分隔）限制机器人仅响应指定的会话/用户，留空则对所有人开放。
+- 💰 **`/cost` 指令** — 在任意 IM 渠道输入 `/cost`，即可查看自启动以来的 LLM Token 用量及预估美元花费。
+- 🇪🇸 **西班牙语界面** — 本地设备设置界面新增完整西班牙语翻译，与现有的中英文并列。
+- 🛠️ **N16R8 开发板适配 + PlatformIO/pioarduino 构建** — `application/edge_agent/platformio.ini` 支持通过 VS Code 的 pioarduino 扩展针对 ESP32-S3 N16R8 DevKitC-1（16MB Flash，八线 PSRAM）进行构建、烧录与串口监视，作为纯 `idf.py` 流程之外的另一种选择。
+- 🔐 **默认安全加固** — 本地配置/状态/文件 HTTP API 现在需要 HTTP Basic Auth（用户名 `admin` + 密码）验证；配网 Wi-Fi AP 也不再允许开放无密码，始终回退为 WPA2-PSK 密码。**两者出厂默认均为 `KrakBotNano2026`——由于该默认值已写入源码仓库，请务必在首次启动时通过网页配置向导修改。**
 
 ## 🌟核心特性
 

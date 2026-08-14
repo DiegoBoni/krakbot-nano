@@ -28,6 +28,7 @@ export type AppConfig = {
   feishu_app_id: string;
   feishu_app_secret: string;
   tg_bot_token: string;
+  tg_allowed_chat_ids: string;
   wechat_token: string;
   wechat_base_url: string;
   wechat_cdn_base_url: string;
@@ -35,6 +36,12 @@ export type AppConfig = {
   search_brave_key: string;
   search_tavily_key: string;
   search_http_allowlist: string;
+  asr_api_key: string;
+  asr_model: string;
+  tts_api_key: string;
+  tts_voice: string;
+  tts_model: string;
+  tts_provider: string;
   enabled_cap_groups: string;
   llm_visible_cap_groups: string;
   enabled_lua_modules: string;
@@ -43,7 +50,16 @@ export type AppConfig = {
 
 /** Server-side configuration groups (must stay in sync with
  * CONFIG_FIELDS in http_server_config_api.c). */
-export type ConfigGroup = 'wifi' | 'llm' | 'im' | 'search' | 'capabilities' | 'skills' | 'time';
+export type ConfigGroup =
+  | 'wifi'
+  | 'llm'
+  | 'im'
+  | 'search'
+  | 'asr'
+  | 'tts'
+  | 'capabilities'
+  | 'skills'
+  | 'time';
 
 export const GROUP_FIELDS: Record<ConfigGroup, (keyof AppConfig)[]> = {
   wifi: ['wifi_ssid', 'wifi_password', 'ap_ssid', 'ap_password', 'ap_behavior'],
@@ -68,12 +84,15 @@ export const GROUP_FIELDS: Record<ConfigGroup, (keyof AppConfig)[]> = {
     'feishu_app_id',
     'feishu_app_secret',
     'tg_bot_token',
+    'tg_allowed_chat_ids',
     'wechat_token',
     'wechat_base_url',
     'wechat_cdn_base_url',
     'wechat_account_id',
   ],
   search: ['search_brave_key', 'search_tavily_key', 'search_http_allowlist'],
+  asr: ['asr_api_key', 'asr_model'],
+  tts: ['tts_api_key', 'tts_voice', 'tts_model', 'tts_provider'],
   capabilities: ['enabled_cap_groups', 'llm_visible_cap_groups'],
   skills: ['enabled_lua_modules'],
   time: ['time_timezone'],
@@ -438,6 +457,60 @@ export function webimWebSocketUrl(): string {
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}/ws/webim`;
+}
+
+export type McpAuthType = 'none' | 'bearer' | 'basic';
+
+export type McpServer = {
+  id: string;
+  name: string;
+  server_url: string;
+  endpoint: string;
+  auth_type: McpAuthType;
+  username: string;
+  secret: string;
+  enabled: boolean;
+};
+
+export async function fetchMcpServers() {
+  const data = await request<{ servers: McpServer[] }>(
+    '/api/mcp/servers',
+    undefined,
+    'Failed to load MCP servers',
+  );
+  return Array.isArray(data.servers) ? data.servers : [];
+}
+
+export async function saveMcpServer(server: Partial<McpServer>) {
+  return request<McpServer>(
+    '/api/mcp/servers',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(server),
+    },
+    'Failed to save MCP server',
+  );
+}
+
+export async function deleteMcpServer(id: string) {
+  return request<{ ok?: boolean }>(
+    '/api/mcp/servers?id=' + encodeURIComponent(id),
+    { method: 'DELETE' },
+    'Failed to delete MCP server',
+  );
+}
+
+export async function testMcpServer(id: string) {
+  return request<{ ok: boolean; message: string }>(
+    '/api/mcp/servers/test',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    },
+    'Failed to test MCP server',
+  );
 }
 
 export async function sendWebimMessage(chatId: string, text: string, files: string[] = []) {

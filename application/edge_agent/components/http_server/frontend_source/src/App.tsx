@@ -21,6 +21,9 @@ const BasicPage = lazy(() =>
 const WebReqPage = lazy(() =>
   import('./pages/WebReqPage').then((mod) => ({ default: mod.WebReqPage })),
 );
+const VoicePage = lazy(() =>
+  import('./pages/VoicePage').then((mod) => ({ default: mod.VoicePage })),
+);
 const MemoryPage = lazy(() =>
   import('./pages/MemoryPage').then((mod) => ({ default: mod.MemoryPage })),
 );
@@ -35,6 +38,7 @@ const SkillsPage = lazy(() =>
 const FilesPage = lazy(() =>
   import('./pages/FilesPage').then((mod) => ({ default: mod.FilesPage })),
 );
+const McpPage = lazy(() => import('./pages/McpPage').then((mod) => ({ default: mod.McpPage })));
 const WebImPage = lazy(() =>
   import('./pages/WebImPage').then((mod) => ({ default: mod.WebImPage })),
 );
@@ -254,6 +258,9 @@ const App: Component = () => {
                   onRestartRequest={() => void handleRestartRequest({ reloadOnSuccess: true })}
                 />
               </Show>
+              <Show when={currentTab() === 'voice'}>
+                <VoicePage />
+              </Show>
               <Show when={currentTab() === 'memory'}>
                 <MemoryPage />
               </Show>
@@ -269,6 +276,9 @@ const App: Component = () => {
                 <SkillsPage
                   onRestartRequest={() => void handleRestartRequest({ reloadOnSuccess: true })}
                 />
+              </Show>
+              <Show when={currentTab() === 'mcp'}>
+                <McpPage />
               </Show>
               <Show when={currentTab() === 'files'}>
                 <FilesPage />

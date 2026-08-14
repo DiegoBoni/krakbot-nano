@@ -202,6 +202,25 @@ static esp_err_t parse_chat_response(const char *body,
         return ESP_FAIL;
     }
 
+    {
+        cJSON *usage = cJSON_GetObjectItem(root, "usage");
+        cJSON *prompt_tokens = usage ? cJSON_GetObjectItem(usage, "prompt_tokens") : NULL;
+        cJSON *completion_tokens = usage ? cJSON_GetObjectItem(usage, "completion_tokens") : NULL;
+        cJSON *total_tokens = usage ? cJSON_GetObjectItem(usage, "total_tokens") : NULL;
+
+        if (cJSON_IsNumber(prompt_tokens)) {
+            out_response->prompt_tokens = (uint32_t)prompt_tokens->valuedouble;
+        }
+        if (cJSON_IsNumber(completion_tokens)) {
+            out_response->completion_tokens = (uint32_t)completion_tokens->valuedouble;
+        }
+        if (cJSON_IsNumber(total_tokens)) {
+            out_response->total_tokens = (uint32_t)total_tokens->valuedouble;
+        } else {
+            out_response->total_tokens = out_response->prompt_tokens + out_response->completion_tokens;
+        }
+    }
+
     cJSON_Delete(root);
     return ESP_OK;
 }

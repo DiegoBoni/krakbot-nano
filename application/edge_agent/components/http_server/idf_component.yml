@@ -4,6 +4,11 @@ dependencies:
   cap_im_local:
     path: ../../../../components/claw_capabilities/cap_im_local
 
+  cap_mcp_client:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_MCP_CLIENT} == True
+    path: ../../../../components/claw_capabilities/cap_mcp_client
+
   lua_module_http_server:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True

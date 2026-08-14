@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Project: ESP-Claw
+- Project: KrakBot Nano (fork of ESP-Claw; frontend package `krakbot-nano-frontend`, docs package `krakbot-nano-doc`, simulator package `@krakbot-nano/simulator-pages`)
 - Version: 0.1.0 (per firmware/frontend package metadata; see CHANGELOG.md for release history)
 - Last updated: 2026-08-12
-- Owner: Espressif (esp-claw org) — see LICENSE (Apache-2.0)
+- Owner: Espressif (esp-claw org, upstream) — see LICENSE (Apache-2.0); this repo is a KrakBot Nano fork (N16R8 flash config, pioarduino build) per commit `524bb58`
 
 ## Stack
 
@@ -47,19 +47,19 @@
 - Framework: ESP-IDF component model; custom agent-runtime layer (`claw_core`, `claw_cap`, `claw_event_router`)
 - Entry points: `application/edge_agent/main/main.c` (boot flow, storage paths, capability/Lua module registration, CLI, agent startup); secondary app `application/mcp_server_point/` (separate main/boards/components, MCP server device variant)
 - Key services / business logic modules: `components/claw_modules/claw_core` (agent loop), `claw_event_router` (routing), `claw_memory` (session/profile/long-term memory + request gating), `claw_skill` (skill registry), `claw_manager`; capabilities under `components/claw_capabilities/*` (im_platform, mcp_client/mcp_server, scheduler, skill_mgr, lua exec, cli, web_search, agent_mgr, session_mgr, llm_config/llm_inspect, boards, system, http_request, im_local, router_mgr, files)
-- Auth strategy: NEEDS CLARIFICATION — no central auth module found in this scan; device-local HTTP config server (`application/edge_agent/components/http_server/`) and IM platform bindings likely handle their own credential/session handling per capability (see `cap_im_platform`, `cap_llm_config`)
-- External APIs consumed: LLM backend(s) via `claw_core` runtime (configurable backend, see `cap_llm_config`), IM platforms via `cap_im_platform`, MCP servers via `cap_mcp_client`, generic HTTP via `cap_http_request`, web search via `cap_web_search`
+- Auth strategy: no session/user auth on the device-local HTTP config server itself; `http_server_config_api.c` persists per-integration credentials (e.g. `llm_auth_type`, Telegram/WeChat bot tokens) as config fields rather than gating server access — IM platform and LLM backend bindings handle their own upstream credentials (see `cap_im_platform`, `cap_llm_config`)
+- External APIs consumed: LLM backend(s) via `claw_core` runtime (Anthropic, OpenAI-compatible, and custom backends under `claw_core/src/llm/backends/`, configurable via `cap_llm_config`), IM platforms via `cap_im_platform`, MCP servers via `cap_mcp_client`, generic HTTP via `cap_http_request`, web search via `cap_web_search`
 - Error handling conventions: `esp_err_t` return codes per CLAUDE.md Code Style; check return values, handle allocation failures, clean up partially-initialized resources (CLAUDE.md "General Engineering Rules")
-- Logging approach: NEEDS CLARIFICATION — standard ESP-IDF logging (`esp_log.h`) presumed but not confirmed in this scan
+- Logging approach: standard ESP-IDF logging (`esp_log.h`), used throughout `claw_core` and other components (e.g. `claw_core_utils.c`, `claw_core_context_persist.c`, `claw_core_control.c`)
 - Performance constraints: avoid local stack variables >128 bytes; use pre-allocated buffers/pools/ring buffers in high-frequency paths (CLAUDE.md "Memory Allocation and Release"); keep `claw_core` loop narrow per `.agents/design.md`
 
 ## [context.frontend]
 
 - Framework + version: SolidJS ^1.9.14 (device settings UI, `application/edge_agent/components/http_server/frontend_source/`); Astro ^7 + Starlight ^0.41 (docs site, `docs/`)
-- State management: NEEDS CLARIFICATION — likely SolidJS signals/stores (idiomatic for Solid) but not directly inspected
+- State management: SolidJS reactive primitives (`createSignal`/`createStore`), confirmed in 23 files under `frontend_source/src`
 - Routing: NEEDS CLARIFICATION — not inspected this scan (Astro handles docs routing via file-based pages; settings UI likely single-page)
 - Design system / component library: `@kobalte/core` (Solid UI primitives), `lucide-solid` (icons), Tailwind CSS v4 for styling
-- API communication layer: NEEDS CLARIFICATION — presumably calls the device-local HTTP config server (`components/http_server/`) directly; not inspected
+- API communication layer: dedicated client module `frontend_source/src/api/client.ts` wrapping calls to the device-local HTTP config server (`components/http_server/`)
 - Styling conventions: Tailwind CSS v4 via `@tailwindcss/vite`
 - i18n / accessibility requirements: `@solid-primitives/i18n` present — i18n supported in settings UI
 - Build tooling: Vite ^8 with `vite-plugin-solid`, `vite-plugin-singlefile` (single-file embedded build), `vite-plugin-compression2`; `pnpm build` / `pnpm typecheck` are the required gates per CLAUDE.md

@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <stddef.h>
+
 #include "cJSON.h"
 #include "esp_err.h"
 #include "mcp_mdns.h"
@@ -61,3 +63,14 @@ esp_err_t cap_mcp_call_remote_tool(const char *input_json, cJSON **result_out);
  * @return ESP_OK on success; `ESP_ERR_INVALID_ARG` if `result_out` is NULL or JSON is invalid.
  */
 esp_err_t cap_mcp_discover_services(const char *input_json, cJSON **result_out);
+
+/**
+ * @brief Render the saved MCP server registry as human-readable text for the LLM.
+ *
+ * @param output      Destination buffer, always NUL-terminated on return.
+ * @param output_size Size of output in bytes.
+ *
+ * @return ESP_OK on success (including "(no mcp servers configured)" when the registry
+ *         is empty); an error code if the registry could not be read.
+ */
+esp_err_t cap_mcp_list_configured_servers(char *output, size_t output_size);

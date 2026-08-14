@@ -33,6 +33,7 @@
 #if CONFIG_APP_CLAW_CAP_EVENT_ROUTER
 #include "claw_event_publisher.h"
 #include "claw_event_router.h"
+#include "cJSON.h"
 #endif
 #if CONFIG_APP_CLAW_CAP_MEMORY
 #include "claw_memory.h"
@@ -659,6 +660,103 @@ static void app_time_sync_success(bool had_valid_time, void *ctx)
 }
 #endif
 
+#if CONFIG_APP_CLAW_CAP_EVENT_ROUTER
+// Recovery seed updates (fatfs_image/system/.recovery) only fill in files
+// missing from DATA, so devices provisioned before a seed fix keep the old
+// router_rules.json forever. This neutralizes one specific stale rule (the
+// English, non-deletable "is on it" ack, superseded by claw_core's own
+// agent_stage ack) left over from before it was disabled in the seed,
+// without touching any rule the user may have customized since.
+static void app_claw_migrate_router_rules(const char *rules_path)
+{
+    static const char *const stale_rule_id = "im_any_message_working_reply";
+    static const char *const stale_message = "\xf0\x9f\x90\x99 KrakBot Nano is on it...";
+    FILE *file = NULL;
+    long size = 0;
+    char *buf = NULL;
+    cJSON *root = NULL;
+    cJSON *rule = NULL;
+    bool changed = false;
+
+    if (!rules_path || !rules_path[0]) {
+        return;
+    }
+
+    file = fopen(rules_path, "rb");
+    if (!file) {
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 ||
+            fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return;
+    }
+    buf = calloc(1, (size_t)size + 1);
+    if (!buf) {
+        fclose(file);
+        return;
+    }
+    if (fread(buf, 1, (size_t)size, file) != (size_t)size) {
+        fclose(file);
+        free(buf);
+        return;
+    }
+    fclose(file);
+
+    root = cJSON_Parse(buf);
+    free(buf);
+    if (!cJSON_IsArray(root)) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    cJSON_ArrayForEach(rule, root) {
+        cJSON *id = cJSON_GetObjectItem(rule, "id");
+        cJSON *enabled = NULL;
+        cJSON *actions = NULL;
+        cJSON *action = NULL;
+        bool has_stale_message = false;
+
+        if (!cJSON_IsString(id) || strcmp(id->valuestring, stale_rule_id) != 0) {
+            continue;
+        }
+
+        actions = cJSON_GetObjectItem(rule, "actions");
+        cJSON_ArrayForEach(action, actions) {
+            cJSON *input = cJSON_GetObjectItem(action, "input");
+            cJSON *message = input ? cJSON_GetObjectItem(input, "message") : NULL;
+
+            if (cJSON_IsString(message) && strcmp(message->valuestring, stale_message) == 0) {
+                has_stale_message = true;
+            }
+        }
+
+        enabled = cJSON_GetObjectItem(rule, "enabled");
+        if (has_stale_message && cJSON_IsTrue(enabled)) {
+            cJSON_ReplaceItemInObject(rule, "enabled", cJSON_CreateFalse());
+            changed = true;
+        }
+        break;
+    }
+
+    if (changed) {
+        char *out_json = cJSON_PrintUnformatted(root);
+
+        if (out_json) {
+            file = fopen(rules_path, "wb");
+            if (file) {
+                fwrite(out_json, 1, strlen(out_json), file);
+                fclose(file);
+                ESP_LOGI(TAG, "Disabled stale router rule '%s'", stale_rule_id);
+            }
+            free(out_json);
+        }
+    }
+
+    cJSON_Delete(root);
+}
+#endif
+
 // Resolve the storage paths threaded through the capability framework from the
 // logical homes registered in claw_paths. This is where app_claw owns the data
 // layout (the subdirectory convention); main only decides the mount points.
@@ -682,6 +780,8 @@ static esp_err_t build_storage_paths(app_claw_storage_paths_t *paths)
                         TAG, "scheduler rules path too long");
     ESP_RETURN_ON_ERROR(claw_paths_join(CLAW_PATH_DATA, "inbox", paths->im_attachment_root, sizeof(paths->im_attachment_root)),
                         TAG, "inbox path too long");
+    ESP_RETURN_ON_ERROR(claw_paths_join(CLAW_PATH_DATA, "tts_cache", paths->tts_cache_root, sizeof(paths->tts_cache_root)),
+                        TAG, "tts cache path too long");
 
     ESP_RETURN_ON_ERROR(claw_paths_join(CLAW_PATH_SYSTEM, "skills", paths->system_skills_root_dir, sizeof(paths->system_skills_root_dir)),
                         TAG, "system skills root path too long");
@@ -715,6 +815,7 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
     ESP_RETURN_ON_ERROR(build_storage_paths(&paths), TAG, "Failed to resolve storage paths");
 
 #if CONFIG_APP_CLAW_CAP_EVENT_ROUTER
+    app_claw_migrate_router_rules(paths.router_rules_path);
     router_config.default_route_messages_to_agent = true;
     router_config.rules_path = paths.router_rules_path;
 #endif

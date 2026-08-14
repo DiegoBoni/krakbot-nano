@@ -37,9 +37,24 @@
 
 **ESP-Claw** is Espressif's **Chat Coding** AI agent framework for IoT devices. It defines device behavior through conversation and completes the full loop of sensing, decision-making, and execution locally on Espressif chips. Inspired by the OpenClaw concept and reimplemented in C, ESP-Claw is lightweight, intelligent, and continuously evolving. With just an ESP32-series chip that costs only a few dollars, you can experience what makes ESP-Claw so nimble.
 
+**KrakBot Nano** builds on that base for a single target board (ESP32-S3 N16R8 DevKitC-1) and adds voice, multi-server MCP, tighter Telegram controls, and hardened defaults — see [🦑 What's New in KrakBot Nano](#-whats-new-in-krakbot-nano) below.
+
 <div align="center">
   <img alt="From traditional IoT to Edge Agent" src="./docs/static/from-traditional-iot-to-edge-agent.webp" width="90%" />
 </div>
+
+## 🦑 What's New in KrakBot Nano
+
+On top of everything ESP-Claw provides, this fork adds:
+
+- 🎙️ **Voice in** — inbound Telegram voice notes are transcribed automatically via the Groq Whisper API and handed to the agent as text, so you can just talk to the bot.
+- 🔊 **Voice out** — agent replies can be spoken back as audio using OpenAI TTS (multilingual, including Spanish) or Groq TTS (free tier, English/Arabic), with selectable voice, gender preset, and model. Configurable from the new **Voice** settings page.
+- 🔌 **Multi-server MCP + Composio** — the MCP client now keeps a persisted registry of named remote MCP servers (URL, endpoint, auth type) instead of a single ad-hoc connection, with `mcp_list_servers`/`mcp_list_tools`/`mcp_call_tool` capabilities. The new **MCP** settings page gives one-click access to Gmail, Calendar, and 500+ other apps through a single [Composio](https://composio.dev) API key.
+- 🔒 **Telegram allowlist** — restrict the bot to specific chat/user IDs (`id` or `id:name`, comma-separated) via `tgAllowedChatIds`; leave empty to keep it open to everyone.
+- 💰 **`/cost` command** — type `/cost` in any IM channel to see cumulative LLM token usage and an estimated USD cost since boot.
+- 🇪🇸 **Spanish UI** — full Spanish translation of the local device settings UI, alongside the existing English and Chinese.
+- 🛠️ **N16R8 board target + PlatformIO/pioarduino build** — `application/edge_agent/platformio.ini` builds, flashes, and monitors against the ESP32-S3 N16R8 DevKitC-1 (16 MB flash, octal PSRAM) through the pioarduino PlatformIO extension, as an alternative to a bare `idf.py` workflow.
+- 🔐 **Hardened defaults** — the local config/status/files HTTP API now requires HTTP Basic Auth (`admin` + password), and the provisioning Wi-Fi AP is never left open (it always falls back to a WPA2-PSK password). **Both default to `KrakBotNano2026` out of the box — change them from the web setup wizard on first boot, since this default is public in source control.**
 
 ## 🌟 Key Features
 
@@ -150,6 +165,8 @@ ESP-Claw now supports a wide range of development boards based on ESP32-S3, ESP3
 
 You can also build ESP-Claw locally. Please refer to the [local build documentation](https://esp-claw.com/en/tutorial/) for board adaptation, building, and flashing. Boards not listed above, as well as chips like the ESP32-P4, can also be supported through local builds and flashing.
 
+For KrakBot Nano's N16R8 target specifically, you can build with either the standard ESP-IDF flow (`idf.py bmgr` + `idf.py build`) or via [`application/edge_agent/platformio.ini`](./application/edge_agent/platformio.ini) using the pioarduino PlatformIO extension in VS Code — see the comments at the top of that file for the one-time board codegen step.
+
 You can find practical examples in our [documentation](https://esp-claw.com/en/tutorial/).
 
 ### Supported Platforms
@@ -168,7 +185,7 @@ You can find practical examples in our [documentation](https://esp-claw.com/en/t
 >
 > ESP-Claw's self-programming capability depends on models with strong tool use and instruction-following ability. We recommend `gpt-5.4`, `qwen3.6-plus`, `claude4.6-sonnet`, `deepseek-v4-pro` or models with comparable capability.
 
-**IM**: ESP-Claw supports Telegram, QQ, Feishu, and WeChat, and can be extended further.
+**IM**: ESP-Claw supports Telegram, QQ, Feishu, and WeChat, and can be extended further. On Telegram, KrakBot Nano adds an optional chat/user ID allowlist, inbound voice-note transcription, and spoken replies (see [What's New](#-whats-new-in-krakbot-nano)).
 
 ## Development Plan
 

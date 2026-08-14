@@ -30,6 +30,7 @@ char *http_server_alloc_scratch_buffer(void);
 bool http_server_path_is_safe(const char *path);
 void http_server_url_decode_inplace(char *value);
 esp_err_t http_server_query_get(httpd_req_t *req, const char *key, char *value, size_t value_size);
+esp_err_t http_server_require_auth(httpd_req_t *req);
 esp_err_t http_server_send_embedded_file(httpd_req_t *req,
                                          const uint8_t *start,
                                          const uint8_t *end,
@@ -50,6 +51,9 @@ esp_err_t http_server_register_lua_modules_routes(httpd_handle_t server);
 esp_err_t http_server_register_config_routes(httpd_handle_t server);
 esp_err_t http_server_register_status_routes(httpd_handle_t server);
 esp_err_t http_server_register_files_routes(httpd_handle_t server);
+#if CONFIG_APP_CLAW_CAP_MCP_CLIENT
+esp_err_t http_server_register_mcp_routes(httpd_handle_t server);
+#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
 esp_err_t http_server_register_lua_app_routes(httpd_handle_t server);
 #endif

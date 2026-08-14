@@ -12,7 +12,6 @@ export const en = {
   closeMenu: 'Close navigation menu',
   externalHome: 'Home',
   externalDocs: 'Documentation',
-  externalGithub: 'GitHub',
 
   navStatus: 'System Status',
   navSystemSettings: 'System Settings',
@@ -20,6 +19,7 @@ export const en = {
   navLlm: 'LLM',
   navIm: 'IM',
   navWebReq: 'Network & Search Config',
+  navVoice: 'Voice (TTS / STT)',
   navMemory: 'Memory',
   navCapabilities: 'Capabilities',
   navLuaModules: 'Lua Modules',
@@ -163,6 +163,10 @@ export const en = {
   feishuAppId: 'Feishu App ID',
   feishuAppSecret: 'Feishu App Secret',
   tgBotToken: 'Telegram Bot Token',
+  tgAllowedChatIds: 'Allowed Chat/User IDs',
+  tgAllowedChatIdsPlaceholder: '123456789:Boni, -100987654321:Family group',
+  tgAllowedChatIdsNote:
+    'Optional. Comma-separated Telegram chat/user IDs allowed to talk to the bot, as "id" or "id:name" — the name (if given) is shared with the agent so it knows who it\'s talking to. Leave empty to allow everyone.',
   wechatToken: 'WeChat Token',
   wechatBaseUrl: 'WeChat Base URL',
   wechatBaseUrlPlaceholder: 'https://ilinkai.weixin.qq.com',
@@ -188,6 +192,33 @@ export const en = {
   webreqHttpAllowlistPlaceholder: 'api.example.com,*.example.org,203.0.113.10',
   webreqHttpAllowlistNote:
     'Use comma-separated domains/IPs. Wildcard * is supported, and a standalone * allows all domains/IPs.',
+
+  sectionAsrTranscription: 'Voice Transcription (Groq)',
+  asrTranscriptionNote:
+    'Optional. If set, inbound Telegram voice/audio messages are transcribed via the Groq Whisper API and routed to the agent as text.',
+  asrApiKey: 'Groq API Key',
+  asrModel: 'Groq Whisper Model',
+  asrModelPlaceholder: 'whisper-large-v3-turbo',
+
+  sectionTtsVoice: 'Voice Replies (Text-to-Speech)',
+  ttsVoiceNote:
+    'Optional. Powers the 🔊 Listen button under agent replies on Telegram — synthesizes the reply as a voice message.',
+  ttsProvider: 'TTS Provider',
+  ttsProviderOpenai: 'OpenAI (paid, multilingual, good Spanish)',
+  ttsProviderGroq: 'Groq (free, English/Arabic only)',
+  ttsProviderGroqNote:
+    'Groq TTS reuses the Groq API key already set above under Voice Transcription — no separate key needed. Free tier: ~100 requests/day. English and Arabic voices only (no Spanish).',
+  ttsProviderOpenaiNote:
+    'Reuses the OpenAI API key already set in LLM Settings — no separate key needed.',
+  ttsApiKey: 'OpenAI API Key',
+  ttsGender: 'Voice Gender',
+  ttsGenderFemale: 'Female',
+  ttsGenderMale: 'Male',
+  ttsGenderNote: 'Picks a preset voice for the selected provider — the Voice field below still overrides it if you enter your own.',
+  ttsVoice: 'Voice',
+  ttsVoicePlaceholder: 'alloy',
+  ttsModel: 'TTS Model',
+  ttsModelPlaceholder: 'tts-1',
 
   sectionCapabilities: 'Capability Groups',
   capabilitiesDescription:
@@ -327,6 +358,43 @@ export const en = {
   setupRestartBanner:
     'Setup is complete. A device restart is required for all changes to take effect.',
   setupRestartNow: 'Restart Now',
+
+  navMcp: 'MCP Servers',
+  mcpDescription:
+    'Connect KrakBot Nano to Gmail, Calendar and 500+ other apps through Composio, using a single API key.',
+  mcpUsageHint:
+    'Enable the "MCP Client" capability on the Capabilities page, then the agent can call mcp_list_servers, mcp_list_tools and mcp_call_tool to use whatever you connected in your Composio account (Gmail, Calendar, etc.) — no need to paste URLs or secrets into chat.',
+  mcpApiKeyLabel: 'Composio API Key',
+  mcpGetApiKey: 'Get your key at composio.dev',
+  mcpApiKeyHint:
+    'Create a free account at composio.dev, connect Gmail/Calendar/etc. there, then paste your API key here.',
+  mcpKeyRequired: 'Enter your Composio API key first',
+  mcpAddServer: 'Add server',
+  mcpEditServer: 'Edit',
+  mcpDeleteServer: 'Delete',
+  mcpDeleteConfirm: 'Delete this MCP server connection? This cannot be undone.',
+  mcpDeleted: 'MCP server deleted',
+  mcpTestConnection: 'Test connection',
+  mcpTesting: 'Testing…',
+  mcpNoServers: 'No MCP servers configured yet. Add one to let the agent use its tools.',
+  mcpColumnActions: 'Actions',
+  mcpFieldName: 'Name',
+  mcpFieldNamePlaceholder: 'e.g. Gmail',
+  mcpFieldUrl: 'Server URL',
+  mcpFieldEndpoint: 'Endpoint',
+  mcpFieldAuthType: 'Authentication',
+  mcpAuthNone: 'None',
+  mcpAuthBearer: 'Bearer / API token',
+  mcpAuthBasic: 'Username & password',
+  mcpFieldUsername: 'Username',
+  mcpFieldPassword: 'Password',
+  mcpFieldBearerToken: 'Bearer token / API key',
+  mcpFieldEnabled: 'Enabled',
+  mcpSave: 'Save',
+  mcpSaving: 'Saving…',
+  mcpSaved: 'MCP server saved',
+  mcpCancel: 'Cancel',
+  mcpValidationError: 'Name and server URL are required',
 };
 
 export type Dict = typeof en;

@@ -90,9 +90,37 @@
     ]
   },
   {
-    "id": "im_any_message_working_reply",
-    "description": "Reply to any IM text message before other automation handling.",
+    "id": "im_cost_command",
+    "description": "Report cumulative LLM token usage and approximate cost when the user sends /cost.",
     "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} cost command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/cost",
+      "text_match_rule": "prefix"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "cost_usage",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_any_message_working_reply",
+    "description": "Deprecated: superseded by claw_core's own immediate agent_stage ack (published in claw_core_agent_loop.c), which is ephemeral and auto-deletes on the real reply. Kept disabled for reference.",
+    "enabled": false,
     "consume_on_match": false,
     "ack": "{{event.source_channel}} working reply sent",
     "match": {
@@ -106,7 +134,31 @@
         "input": {
           "channel": "{{event.source_channel}}",
           "chat_id": "{{event.chat_id}}",
-          "message": "🦞 ESP-Claw is snapping on it..."
+          "message": "🐙 KrakBot Nano ya se está ocupando..."
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_audio_attachment_transcribe",
+    "description": "Transcribe inbound voice/audio attachments via Groq and route the text to the agent.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} audio attachment sent for transcription",
+    "match": {
+      "event_type": "attachment_saved",
+      "content_type": "audio"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "groq_transcribe",
+        "input": {
+          "saved_path": "{{event.payload.saved_path}}",
+          "chat_id": "{{event.chat_id}}",
+          "channel": "{{event.source_channel}}",
+          "sender_id": "{{event.sender_id}}",
+          "message_id": "{{event.message_id}}"
         }
       }
     ]

@@ -163,6 +163,21 @@ static esp_err_t cap_mcp_list_execute(const char *input_json,
     return ESP_OK;
 }
 
+static esp_err_t cap_mcp_list_servers_execute(const char *input_json,
+                                              const claw_cap_call_context_t *ctx,
+                                              char *output,
+                                              size_t output_size)
+{
+    (void)input_json;
+    (void)ctx;
+
+    esp_err_t err = cap_mcp_list_configured_servers(output, output_size);
+    if (err != ESP_OK) {
+        snprintf(output, output_size, "Error: failed to read MCP server registry (%s)", esp_err_to_name(err));
+    }
+    return ESP_OK;
+}
+
 static esp_err_t cap_mcp_discover_execute(const char *input_json,
                                           const claw_cap_call_context_t *ctx,
                                           char *output,
@@ -226,23 +241,39 @@ static const claw_cap_descriptor_t s_mcp_client_descriptors[] = {
         .id = "mcp_list_tools",
         .name = "mcp_list_tools",
         .family = "mcp",
-        .description = "List tools from a remote MCP server.",
+        .description = "List tools from a remote MCP server. Pass either server_id (a server "
+                        "saved in the device's MCP settings, see mcp_list_servers) or an ad hoc "
+                        "server_url.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"server_url\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"cursor\":{\"type\":\"string\"}},\"required\":[\"server_url\"]}",
+        "{\"type\":\"object\",\"properties\":{\"server_id\":{\"type\":\"string\"},\"server_url\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"cursor\":{\"type\":\"string\"}}}",
         .execute = cap_mcp_list_execute,
     },
     {
         .id = "mcp_call_tool",
         .name = "mcp_call_tool",
         .family = "mcp",
-        .description = "Call a tool on a remote MCP server.",
+        .description = "Call a tool on a remote MCP server. Pass either server_id (a server "
+                        "saved in the device's MCP settings, see mcp_list_servers) or an ad hoc "
+                        "server_url.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"server_url\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"tool_name\":{\"type\":\"string\"},\"arguments\":{\"type\":\"object\"}},\"required\":[\"server_url\",\"tool_name\"]}",
+        "{\"type\":\"object\",\"properties\":{\"server_id\":{\"type\":\"string\"},\"server_url\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"tool_name\":{\"type\":\"string\"},\"arguments\":{\"type\":\"object\"}},\"required\":[\"tool_name\"]}",
         .execute = cap_mcp_call_execute,
+    },
+    {
+        .id = "mcp_list_servers",
+        .name = "mcp_list_servers",
+        .family = "mcp",
+        .description = "List MCP servers saved in the device's MCP settings (id, name, url, "
+                        "auth type, enabled). Use a listed id as server_id in mcp_list_tools / "
+                        "mcp_call_tool.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = cap_mcp_list_servers_execute,
     },
     {
         .id = "mcp_discover",
@@ -271,4 +302,43 @@ esp_err_t cap_mcp_client_register_group(void)
     }
 
     return claw_cap_register_group(&s_mcp_client_group);
+}
+
+esp_err_t cap_mcp_client_test_server(const char *server_id, char *message, size_t message_size)
+{
+    if (!server_id || !server_id[0] || !message || message_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    message[0] = '\0';
+
+    cJSON *input = cJSON_CreateObject();
+    if (!input) {
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddStringToObject(input, "server_id", server_id);
+    char *input_json = cJSON_PrintUnformatted(input);
+    cJSON_Delete(input);
+    if (!input_json) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    cJSON *result = NULL;
+    esp_err_t err = cap_mcp_list_remote_tools(input_json, &result);
+    cJSON_free(input_json);
+    if (err != ESP_OK) {
+        snprintf(message, message_size, "Error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    const char *error_message = cJSON_GetStringValue(cJSON_GetObjectItem(result, "error_message"));
+    if (error_message && error_message[0]) {
+        snprintf(message, message_size, "Error: %s", error_message);
+    } else {
+        cJSON *tools = cJSON_GetObjectItem(result, "tools");
+        int count = cJSON_IsArray(tools) ? cJSON_GetArraySize(tools) : 0;
+        snprintf(message, message_size, "OK: %d tool(s) found", count);
+    }
+
+    cJSON_Delete(result);
+    return ESP_OK;
 }

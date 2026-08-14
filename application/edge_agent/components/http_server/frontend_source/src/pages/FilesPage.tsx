@@ -626,7 +626,7 @@ const FileEditorModal: Component<{
         <textarea
           spellcheck={false}
           readonly={props.state().readOnly}
-          class="w-full min-h-[420px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] p-4 text-[0.88rem] leading-6 font-mono text-[var(--color-text-primary)] focus:outline-none focus:border-[rgba(232,54,45,0.4)]"
+          class="w-full min-h-[420px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] p-4 text-[0.88rem] leading-6 font-mono text-[var(--color-text-primary)] focus:outline-none focus:border-[rgba(0,229,204,0.4)]"
           value={props.state().content}
           onInput={(event) => props.onContentChange(event.currentTarget.value)}
         />

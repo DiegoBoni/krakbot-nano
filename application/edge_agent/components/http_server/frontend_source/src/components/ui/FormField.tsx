@@ -78,7 +78,7 @@ export const TextInput: Component<TextInputProps> = (props) => {
               'w-full rounded-[var(--radius-sm)] border bg-[var(--color-bg-input)] px-3 py-2 text-sm text-[var(--color-text-primary)] transition',
               local.error
                 ? 'border-[var(--color-danger)]'
-                : 'border-[var(--color-border-subtle)] focus:border-[rgba(232,54,45,0.4)]',
+                : 'border-[var(--color-border-subtle)] focus:border-[rgba(0,229,204,0.4)]',
               isPasswordField() ? 'pr-11' : '',
               local.inputClass ?? '',
             ]
@@ -169,7 +169,7 @@ export const SelectInput: Component<SelectInputProps> = (props) => {
           id={id}
           {...rest}
           class={[
-            'w-full rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] px-3 py-2 text-sm text-[var(--color-text-primary)] transition focus:border-[rgba(232,54,45,0.4)]',
+            'w-full rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] px-3 py-2 text-sm text-[var(--color-text-primary)] transition focus:border-[rgba(0,229,204,0.4)]',
             local.inputClass ?? '',
           ]
             .filter(Boolean)
@@ -210,7 +210,7 @@ export const TextArea: Component<TextAreaProps> = (props) => {
           spellcheck={false}
           {...rest}
           class={[
-            'w-full min-h-[200px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] px-4 py-3 text-[0.88rem] leading-6 text-[var(--color-text-primary)] transition font-mono focus:border-[rgba(232,54,45,0.4)]',
+            'w-full min-h-[200px] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-input)] px-4 py-3 text-[0.88rem] leading-6 text-[var(--color-text-primary)] transition font-mono focus:border-[rgba(0,229,204,0.4)]',
             local.inputClass ?? '',
           ]
             .filter(Boolean)

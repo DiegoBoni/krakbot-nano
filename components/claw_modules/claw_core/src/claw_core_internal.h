@@ -97,6 +97,9 @@ struct claw_core_state {
     claw_core_llm_config_t llm_config;
     claw_llm_runtime_t *llm_runtime;
     SemaphoreHandle_t llm_lock;
+    uint64_t llm_usage_prompt_tokens;
+    uint64_t llm_usage_completion_tokens;
+    uint32_t llm_usage_request_count;
     uint32_t task_stack_size;
     UBaseType_t task_priority;
     BaseType_t task_core;
@@ -205,6 +208,7 @@ claw_core_agent_loop_phase_t claw_core_control_get_phase(claw_core_state_t *core
 
 void claw_core_publish_out_message_if_requested(const claw_core_request_item_t *request,
                                                 const claw_core_response_item_t *response);
+esp_err_t claw_core_publish_stage_text(const claw_core_request_t *request, const char *text);
 void claw_core_publish_stage_tool_calls(const claw_core_request_t *request,
                                         const claw_core_llm_response_t *response,
                                         uint32_t iteration);

@@ -654,12 +654,28 @@ static esp_err_t parse_chat_response(const char *body,
         }
     }
 
-    cJSON_Delete(root);
     if (!out_response->text && out_response->tool_call_count == 0 &&
             !out_response->reasoning_content) {
+        cJSON_Delete(root);
         *out_error_message = dup_printf("LLM returned empty response");
         return ESP_FAIL;
     }
+
+    {
+        cJSON *usage = cJSON_GetObjectItem(root, "usage");
+        cJSON *input_tokens = usage ? cJSON_GetObjectItem(usage, "input_tokens") : NULL;
+        cJSON *output_tokens = usage ? cJSON_GetObjectItem(usage, "output_tokens") : NULL;
+
+        if (cJSON_IsNumber(input_tokens)) {
+            out_response->prompt_tokens = (uint32_t)input_tokens->valuedouble;
+        }
+        if (cJSON_IsNumber(output_tokens)) {
+            out_response->completion_tokens = (uint32_t)output_tokens->valuedouble;
+        }
+        out_response->total_tokens = out_response->prompt_tokens + out_response->completion_tokens;
+    }
+
+    cJSON_Delete(root);
     return ESP_OK;
 }
 

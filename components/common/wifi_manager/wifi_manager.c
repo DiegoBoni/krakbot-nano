@@ -30,6 +30,9 @@ static const char *TAG = "wifi_manager";
 #ifndef CONFIG_APP_WIFI_AP_SSID_PREFIX
 #define CONFIG_APP_WIFI_AP_SSID_PREFIX "krakbot-nano"
 #endif
+#ifndef CONFIG_APP_WIFI_AP_PASSWORD
+#define CONFIG_APP_WIFI_AP_PASSWORD "KrakBotNano2026"
+#endif
 #ifndef CONFIG_APP_WIFI_AP_CHANNEL
 #define CONFIG_APP_WIFI_AP_CHANNEL 1
 #endif
@@ -130,6 +133,12 @@ static const char *wifi_manager_ap_ssid_prefix(void)
            ? s_config.ap_ssid_prefix : CONFIG_APP_WIFI_AP_SSID_PREFIX;
 }
 
+static const char *wifi_manager_ap_password(void)
+{
+    return (s_config.ap_password && s_config.ap_password[0] != '\0')
+           ? s_config.ap_password : CONFIG_APP_WIFI_AP_PASSWORD;
+}
+
 static uint8_t wifi_manager_ap_channel(void)
 {
     return s_config.ap_channel ? s_config.ap_channel : CONFIG_APP_WIFI_AP_CHANNEL;
@@ -181,12 +190,8 @@ static void apply_ap_config(void)
     memcpy(ap_cfg.ap.ssid, s_ap_ssid, ap_cfg.ap.ssid_len);
     ap_cfg.ap.channel = wifi_manager_ap_channel();
     ap_cfg.ap.max_connection = wifi_manager_ap_max_conn();
-    if (s_config.ap_password && s_config.ap_password[0] != '\0') {
-        ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
-        strlcpy((char *)ap_cfg.ap.password, s_config.ap_password, sizeof(ap_cfg.ap.password));
-    } else {
-        ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
-    }
+    ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    strlcpy((char *)ap_cfg.ap.password, wifi_manager_ap_password(), sizeof(ap_cfg.ap.password));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
 }
 

@@ -42,6 +42,9 @@ static const char *TAG = "cap_im_tg";
 #define CAP_IM_TG_PATH_BUF_SIZE       256
 #define CAP_IM_TG_NAME_BUF_SIZE       96
 #define CAP_IM_TG_MULTIPART_BOUNDARY  "----cap_im_tg_boundary"
+#define CAP_IM_TG_TTS_CACHE_SIZE      8
+#define CAP_IM_TG_TTS_QUEUE_LEN       4
+#define CAP_IM_TG_STAGE_MSG_CAP       12
 
 typedef struct {
     char *buf;
@@ -69,21 +72,50 @@ typedef struct {
 } cap_im_tg_attachment_job_t;
 
 typedef struct {
+    char chat_id[32];
+    char *text;
+    uint32_t id;
+} cap_im_tg_tts_cache_entry_t;
+
+typedef struct {
+    char *chat_id;
+    char *text;
+} cap_im_tg_tts_job_t;
+
+typedef struct {
+    char chat_id[32];
+    int64_t message_id;
+} cap_im_tg_stage_msg_t;
+
+typedef struct {
     char bot_token[192];
+    char allowed_chat_ids[256];
     char attachment_root_dir[128];
     size_t max_inbound_file_bytes;
     bool enable_inbound_attachments;
     TaskHandle_t poll_task;
     TaskHandle_t attachment_task;
+    TaskHandle_t tts_task;
     QueueHandle_t attachment_queue;
+    QueueHandle_t tts_queue;
     volatile bool stop_requested;
     int64_t next_update_id;
     uint64_t seen_update_keys[CAP_IM_TG_DEDUP_CACHE_SIZE];
     size_t seen_update_idx;
+    cap_im_tg_tts_cache_entry_t tts_cache[CAP_IM_TG_TTS_CACHE_SIZE];
+    uint32_t tts_next_id;
+    cap_im_tg_stage_msg_t stage_msgs[CAP_IM_TG_STAGE_MSG_CAP];
+    size_t stage_msg_idx;
 } cap_im_tg_state_t;
 
 static EXT_RAM_BSS_ATTR cap_im_tg_state_t s_tg;
 static bool s_tg_initialized;
+
+static void cap_im_tg_log_stack_watermark(const char *label);
+static esp_err_t cap_im_tg_send_text_ex(const char *chat_id,
+                                        const char *text,
+                                        bool attach_tts_button,
+                                        int64_t *out_last_message_id);
 
 static void cap_im_tg_init_defaults(void)
 {
@@ -137,6 +169,82 @@ static bool cap_im_tg_dedup_check_and_record(const char *update_key)
     s_tg.seen_update_keys[s_tg.seen_update_idx] = key;
     s_tg.seen_update_idx = (s_tg.seen_update_idx + 1) % CAP_IM_TG_DEDUP_CACHE_SIZE;
     return false;
+}
+
+/* An empty allowlist means the bot is open to anyone. Otherwise chat_id or
+ * sender_id must exactly match one of the comma-separated entries configured
+ * by the user (covers both DMs, where chat_id == user id, and groups). Each
+ * entry is "id" or "id:name" - when a name is present it is copied into
+ * out_name so the caller can tell the agent who it's talking to. */
+static bool cap_im_tg_lookup_entry(const char *chat_id,
+                                   const char *sender_id,
+                                   char *out_name,
+                                   size_t out_name_size)
+{
+    const char *cursor = s_tg.allowed_chat_ids;
+
+    if (out_name && out_name_size) {
+        out_name[0] = '\0';
+    }
+
+    if (s_tg.allowed_chat_ids[0] == '\0') {
+        return true;
+    }
+
+    while (*cursor) {
+        char token[64];
+        char *colon;
+        size_t len = 0;
+
+        while (*cursor == ',' || *cursor == ' ' || *cursor == '\t') {
+            cursor++;
+        }
+        while (cursor[len] && cursor[len] != ',' && len + 1 < sizeof(token)) {
+            len++;
+        }
+        if (len == 0) {
+            break;
+        }
+        memcpy(token, cursor, len);
+        token[len] = '\0';
+        while (len > 0 && (token[len - 1] == ' ' || token[len - 1] == '\t')) {
+            token[--len] = '\0';
+        }
+
+        colon = strchr(token, ':');
+        if (colon) {
+            *colon = '\0';
+        }
+
+        if (token[0] &&
+                ((chat_id && strcmp(token, chat_id) == 0) ||
+                 (sender_id && sender_id[0] && strcmp(token, sender_id) == 0))) {
+            if (colon && out_name && out_name_size) {
+                const char *name = colon + 1;
+
+                while (*name == ' ' || *name == '\t') {
+                    name++;
+                }
+                strlcpy(out_name, name, out_name_size);
+            }
+            return true;
+        }
+
+        cursor += len;
+        while (*cursor && *cursor != ',') {
+            cursor++;
+        }
+        if (*cursor == ',') {
+            cursor++;
+        }
+    }
+
+    return false;
+}
+
+static bool cap_im_tg_id_allowed(const char *chat_id, const char *sender_id)
+{
+    return cap_im_tg_lookup_entry(chat_id, sender_id, NULL, 0);
 }
 
 static esp_err_t cap_im_tg_http_event_handler(esp_http_client_event_t *event)
@@ -254,16 +362,33 @@ static esp_err_t cap_im_tg_publish_inbound_text(const char *chat_id,
                                                 const char *message_id,
                                                 const char *content)
 {
+    char sender_name[64];
+    char *named_content = NULL;
+    esp_err_t err;
+
     if (!content || !content[0]) {
         return ESP_OK;
     }
 
-    return claw_event_router_publish_message("tg_gateway",
-                                             "telegram",
-                                             chat_id,
-                                             content,
-                                             sender_id,
-                                             message_id);
+    /* Surface who's talking to the agent when the sender has a name
+     * configured in the Telegram allowlist - the event schema has no
+     * dedicated field for it, so it rides along as a prefix on the text. */
+    if (cap_im_tg_lookup_entry(chat_id, sender_id, sender_name, sizeof(sender_name)) &&
+            sender_name[0]) {
+        int written = asprintf(&named_content, "[%s] %s", sender_name, content);
+        if (written < 0) {
+            named_content = NULL;
+        }
+    }
+
+    err = claw_event_router_publish_message("tg_gateway",
+                                            "telegram",
+                                            chat_id,
+                                            named_content ? named_content : content,
+                                            sender_id,
+                                            message_id);
+    free(named_content);
+    return err;
 }
 
 static esp_err_t cap_im_tg_publish_attachment_event(const char *chat_id,
@@ -293,6 +418,163 @@ static esp_err_t cap_im_tg_publish_attachment_event(const char *chat_id,
     event.text = "";
     event.payload_json = (char *)payload_json;
     return claw_event_router_publish(&event);
+}
+
+static uint32_t cap_im_tg_tts_cache_store(const char *chat_id, const char *text)
+{
+    size_t slot;
+    char *text_copy = NULL;
+
+    if (!chat_id || !text) {
+        return 0;
+    }
+
+    text_copy = strdup(text);
+    if (!text_copy) {
+        return 0;
+    }
+
+    s_tg.tts_next_id++;
+    if (s_tg.tts_next_id == 0) {
+        s_tg.tts_next_id = 1;
+    }
+
+    slot = s_tg.tts_next_id % CAP_IM_TG_TTS_CACHE_SIZE;
+    free(s_tg.tts_cache[slot].text);
+    s_tg.tts_cache[slot].text = text_copy;
+    s_tg.tts_cache[slot].id = s_tg.tts_next_id;
+    strlcpy(s_tg.tts_cache[slot].chat_id, chat_id, sizeof(s_tg.tts_cache[slot].chat_id));
+
+    return s_tg.tts_next_id;
+}
+
+static char *cap_im_tg_tts_cache_lookup(uint32_t id, const char *chat_id)
+{
+    size_t slot = id % CAP_IM_TG_TTS_CACHE_SIZE;
+
+    if (id == 0 || !chat_id) {
+        return NULL;
+    }
+    if (s_tg.tts_cache[slot].id != id || !s_tg.tts_cache[slot].text) {
+        return NULL;
+    }
+    if (strcmp(s_tg.tts_cache[slot].chat_id, chat_id) != 0) {
+        return NULL;
+    }
+
+    return strdup(s_tg.tts_cache[slot].text);
+}
+
+static void cap_im_tg_answer_callback_query(const char *callback_query_id, const char *text)
+{
+    cJSON *body = NULL;
+    char *body_json = NULL;
+    char *resp = NULL;
+
+    if (!callback_query_id || !callback_query_id[0]) {
+        return;
+    }
+
+    body = cJSON_CreateObject();
+    if (!body) {
+        return;
+    }
+    cJSON_AddStringToObject(body, "callback_query_id", callback_query_id);
+    if (text && text[0]) {
+        cJSON_AddStringToObject(body, "text", text);
+    }
+    body_json = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+    if (!body_json) {
+        return;
+    }
+
+    cap_im_tg_api_call("answerCallbackQuery", body_json, &resp);
+    free(body_json);
+    free(resp);
+}
+
+static void cap_im_tg_free_tts_job(cap_im_tg_tts_job_t *job)
+{
+    if (!job) {
+        return;
+    }
+    free(job->chat_id);
+    free(job->text);
+    free(job);
+}
+
+static void cap_im_tg_queue_tts_job(const char *chat_id, const char *text)
+{
+    cap_im_tg_tts_job_t *job = NULL;
+
+    if (!s_tg.tts_queue || !chat_id || !text) {
+        return;
+    }
+
+    job = calloc(1, sizeof(*job));
+    if (!job) {
+        return;
+    }
+    job->chat_id = strdup(chat_id);
+    job->text = strdup(text);
+    if (!job->chat_id || !job->text) {
+        cap_im_tg_free_tts_job(job);
+        return;
+    }
+
+    if (xQueueSend(s_tg.tts_queue, &job, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "Telegram TTS queue full chat=%s", chat_id);
+        cap_im_tg_free_tts_job(job);
+    }
+}
+
+static void cap_im_tg_tts_task(void *arg)
+{
+    cap_im_tg_tts_job_t *job = NULL;
+
+    (void)arg;
+
+    while (1) {
+        if (xQueueReceive(s_tg.tts_queue, &job, pdMS_TO_TICKS(200)) == pdTRUE) {
+            if (job) {
+                cJSON *input = cJSON_CreateObject();
+
+                if (input) {
+                    char output[128] = {0};
+                    claw_cap_call_context_t call_ctx = {0};
+                    char *input_json = NULL;
+
+                    cJSON_AddStringToObject(input, "text", job->text);
+                    cJSON_AddStringToObject(input, "chat_id", job->chat_id);
+                    cJSON_AddStringToObject(input, "channel", "telegram");
+                    input_json = cJSON_PrintUnformatted(input);
+                    cJSON_Delete(input);
+
+                    if (input_json) {
+                        call_ctx.channel = "telegram";
+                        call_ctx.chat_id = job->chat_id;
+                        call_ctx.source_cap = "tg_gateway";
+                        call_ctx.caller = CLAW_CAP_CALLER_SYSTEM;
+                        if (claw_cap_call("tts_speak", input_json, &call_ctx, output, sizeof(output)) != ESP_OK) {
+                            ESP_LOGW(TAG, "TTS speak failed chat=%s: %s", job->chat_id, output);
+                        }
+                        free(input_json);
+                    }
+                }
+                cap_im_tg_free_tts_job(job);
+                cap_im_tg_log_stack_watermark("tg_tts");
+            }
+            continue;
+        }
+
+        if (s_tg.stop_requested) {
+            break;
+        }
+    }
+
+    s_tg.tts_task = NULL;
+    claw_task_delete(NULL);
 }
 
 static void cap_im_tg_log_stack_watermark(const char *label)
@@ -596,10 +878,48 @@ static void cap_im_tg_queue_attachment(const char *chat_id,
     }
 }
 
+static void cap_im_tg_handle_callback_query(cJSON *callback_query_json, int64_t update_id)
+{
+    cJSON *id_json = cJSON_GetObjectItem(callback_query_json, "id");
+    cJSON *data_json = cJSON_GetObjectItem(callback_query_json, "data");
+    cJSON *message_json = cJSON_GetObjectItem(callback_query_json, "message");
+    cJSON *chat_json = cJSON_IsObject(message_json) ? cJSON_GetObjectItem(message_json, "chat") : NULL;
+    cJSON *chat_id_json = cJSON_IsObject(chat_json) ? cJSON_GetObjectItem(chat_json, "id") : NULL;
+    const char *callback_id = cJSON_IsString(id_json) ? id_json->valuestring : NULL;
+    const char *data = cJSON_IsString(data_json) ? data_json->valuestring : NULL;
+    char chat_id[32];
+    char *text = NULL;
+    uint32_t tts_id;
+
+    (void)update_id;
+
+    if (!data || strncmp(data, "tts:", 4) != 0 || !cJSON_IsNumber(chat_id_json)) {
+        cap_im_tg_answer_callback_query(callback_id, NULL);
+        return;
+    }
+
+    snprintf(chat_id, sizeof(chat_id), "%" PRId64, (int64_t)chat_id_json->valuedouble);
+    if (!cap_im_tg_id_allowed(chat_id, NULL)) {
+        cap_im_tg_answer_callback_query(callback_id, NULL);
+        return;
+    }
+    tts_id = (uint32_t)strtoul(data + 4, NULL, 10);
+    text = cap_im_tg_tts_cache_lookup(tts_id, chat_id);
+    if (!text) {
+        cap_im_tg_answer_callback_query(callback_id, "\xe2\x9a\xa0\xef\xb8\x8f Ya no tengo ese mensaje en cache");
+        return;
+    }
+
+    cap_im_tg_answer_callback_query(callback_id, "\xf0\x9f\x94\x8a Generando audio...");
+    cap_im_tg_queue_tts_job(chat_id, text);
+    free(text);
+}
+
 static void cap_im_tg_handle_update(cJSON *update_json)
 {
     cJSON *update_id_json;
     cJSON *message_json;
+    cJSON *callback_query_json;
     cJSON *chat_json;
     cJSON *chat_id_json;
     cJSON *from_json;
@@ -608,6 +928,8 @@ static void cap_im_tg_handle_update(cJSON *update_json)
     cJSON *text_json;
     cJSON *document_json;
     cJSON *photo_json;
+    cJSON *voice_json;
+    cJSON *audio_json;
     const char *caption = NULL;
     char update_key[32];
     char chat_id[32];
@@ -620,8 +942,26 @@ static void cap_im_tg_handle_update(cJSON *update_json)
     }
 
     update_id_json = cJSON_GetObjectItem(update_json, "update_id");
+    if (!cJSON_IsNumber(update_id_json)) {
+        return;
+    }
+
+    callback_query_json = cJSON_GetObjectItem(update_json, "callback_query");
+    if (cJSON_IsObject(callback_query_json)) {
+        update_id = (int64_t)update_id_json->valuedouble;
+        if (update_id >= s_tg.next_update_id) {
+            s_tg.next_update_id = update_id + 1;
+        }
+        snprintf(update_key, sizeof(update_key), "%" PRId64, update_id);
+        if (cap_im_tg_dedup_check_and_record(update_key)) {
+            return;
+        }
+        cap_im_tg_handle_callback_query(callback_query_json, update_id);
+        return;
+    }
+
     message_json = cJSON_GetObjectItem(update_json, "message");
-    if (!cJSON_IsNumber(update_id_json) || !cJSON_IsObject(message_json)) {
+    if (!cJSON_IsObject(message_json)) {
         return;
     }
 
@@ -655,6 +995,12 @@ static void cap_im_tg_handle_update(cJSON *update_json)
         sender_id[0] = '\0';
     }
     snprintf(message_id, sizeof(message_id), "%" PRId64, (int64_t)message_id_json->valuedouble);
+
+    if (!cap_im_tg_id_allowed(chat_id, sender_id)) {
+        ESP_LOGI(TAG, "Telegram message from disallowed id chat=%s sender=%s dropped",
+                chat_id, sender_id);
+        return;
+    }
 
     caption = cJSON_GetStringValue(cJSON_GetObjectItem(message_json, "caption"));
     photo_json = cap_im_tg_select_best_photo(message_json);
@@ -698,6 +1044,47 @@ static void cap_im_tg_handle_update(cJSON *update_json)
                                        mime,
                                        caption,
                                        "file");
+        }
+    }
+
+    voice_json = cJSON_GetObjectItem(message_json, "voice");
+    if (s_tg.enable_inbound_attachments && cJSON_IsObject(voice_json)) {
+        const char *file_id = cJSON_GetStringValue(cJSON_GetObjectItem(voice_json, "file_id"));
+        const char *mime = cJSON_GetStringValue(cJSON_GetObjectItem(voice_json, "mime_type"));
+
+        ESP_LOGI(TAG, "Telegram voice message=%s chat=%s", message_id, chat_id);
+
+        if (file_id && file_id[0]) {
+            cap_im_tg_queue_attachment(chat_id,
+                                       sender_id,
+                                       message_id,
+                                       "voice",
+                                       file_id,
+                                       "voice.ogg",
+                                       mime && mime[0] ? mime : "audio/ogg",
+                                       caption,
+                                       "audio");
+        }
+    }
+
+    audio_json = cJSON_GetObjectItem(message_json, "audio");
+    if (s_tg.enable_inbound_attachments && cJSON_IsObject(audio_json)) {
+        const char *file_id = cJSON_GetStringValue(cJSON_GetObjectItem(audio_json, "file_id"));
+        const char *file_name = cJSON_GetStringValue(cJSON_GetObjectItem(audio_json, "file_name"));
+        const char *mime = cJSON_GetStringValue(cJSON_GetObjectItem(audio_json, "mime_type"));
+
+        ESP_LOGI(TAG, "Telegram audio message=%s chat=%s", message_id, chat_id);
+
+        if (file_id && file_id[0]) {
+            cap_im_tg_queue_attachment(chat_id,
+                                       sender_id,
+                                       message_id,
+                                       "audio",
+                                       file_id,
+                                       file_name && file_name[0] ? file_name : "audio.mp3",
+                                       mime && mime[0] ? mime : "audio/mpeg",
+                                       caption,
+                                       "audio");
         }
     }
 
@@ -771,7 +1158,10 @@ static esp_err_t cap_im_tg_poll_once(void)
     return ESP_OK;
 }
 
-static esp_err_t cap_im_tg_send_text_chunk(const char *chat_id, const char *message)
+static esp_err_t cap_im_tg_send_text_chunk_ex(const char *chat_id,
+                                              const char *message,
+                                              uint32_t tts_button_id,
+                                              int64_t *out_message_id)
 {
     cJSON *body = NULL;
     char *body_json = NULL;
@@ -785,6 +1175,24 @@ static esp_err_t cap_im_tg_send_text_chunk(const char *chat_id, const char *mess
 
     cJSON_AddStringToObject(body, "chat_id", chat_id);
     cJSON_AddStringToObject(body, "text", message);
+    if (tts_button_id != 0) {
+        char callback_data[32];
+        cJSON *reply_markup = cJSON_CreateObject();
+        cJSON *rows = reply_markup ? cJSON_AddArrayToObject(reply_markup, "inline_keyboard") : NULL;
+        cJSON *row = rows ? cJSON_CreateArray() : NULL;
+        cJSON *button = row ? cJSON_CreateObject() : NULL;
+
+        snprintf(callback_data, sizeof(callback_data), "tts:%" PRIu32, tts_button_id);
+        if (reply_markup && rows && row && button) {
+            cJSON_AddStringToObject(button, "text", "\xf0\x9f\x94\x8a Escuchar");
+            cJSON_AddStringToObject(button, "callback_data", callback_data);
+            cJSON_AddItemToArray(row, button);
+            cJSON_AddItemToArray(rows, row);
+            cJSON_AddItemToObject(body, "reply_markup", reply_markup);
+        } else {
+            cJSON_Delete(reply_markup);
+        }
+    }
     body_json = cJSON_PrintUnformatted(body);
     cJSON_Delete(body);
     if (!body_json) {
@@ -793,8 +1201,82 @@ static esp_err_t cap_im_tg_send_text_chunk(const char *chat_id, const char *mess
 
     err = cap_im_tg_api_call("sendMessage", body_json, &resp);
     free(body_json);
+    if (err == ESP_OK && out_message_id && resp) {
+        cJSON *resp_root = cJSON_Parse(resp);
+        if (resp_root) {
+            cJSON *result = cJSON_GetObjectItem(resp_root, "result");
+            cJSON *mid = cJSON_IsObject(result) ? cJSON_GetObjectItem(result, "message_id") : NULL;
+            if (cJSON_IsNumber(mid)) {
+                *out_message_id = (int64_t)mid->valuedouble;
+            }
+            cJSON_Delete(resp_root);
+        }
+    }
     free(resp);
     return err;
+}
+
+static esp_err_t cap_im_tg_send_text_chunk(const char *chat_id, const char *message)
+{
+    return cap_im_tg_send_text_chunk_ex(chat_id, message, 0, NULL);
+}
+
+static esp_err_t cap_im_tg_delete_message(const char *chat_id, int64_t message_id)
+{
+    cJSON *body = NULL;
+    char *body_json = NULL;
+    char *resp = NULL;
+    esp_err_t err;
+
+    body = cJSON_CreateObject();
+    if (!body) {
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddStringToObject(body, "chat_id", chat_id);
+    cJSON_AddNumberToObject(body, "message_id", (double)message_id);
+    body_json = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+    if (!body_json) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    err = cap_im_tg_api_call("deleteMessage", body_json, &resp);
+    free(body_json);
+    free(resp);
+    return err;
+}
+
+/* Stage/status updates (agent_stage events) are tracked per chat so they can
+ * be deleted the moment the real reply (out_message) is sent, mimicking
+ * Telegram's own ephemeral "typing..." indicator but with custom text. */
+static void cap_im_tg_track_stage_message(const char *chat_id, int64_t message_id)
+{
+    cap_im_tg_stage_msg_t *slot;
+
+    if (!chat_id || !chat_id[0] || message_id <= 0) {
+        return;
+    }
+    slot = &s_tg.stage_msgs[s_tg.stage_msg_idx % CAP_IM_TG_STAGE_MSG_CAP];
+    strlcpy(slot->chat_id, chat_id, sizeof(slot->chat_id));
+    slot->message_id = message_id;
+    s_tg.stage_msg_idx++;
+}
+
+static void cap_im_tg_clear_stage_messages(const char *chat_id)
+{
+    size_t i;
+
+    if (!chat_id || !chat_id[0]) {
+        return;
+    }
+    for (i = 0; i < CAP_IM_TG_STAGE_MSG_CAP; i++) {
+        if (s_tg.stage_msgs[i].message_id > 0 &&
+                strcmp(s_tg.stage_msgs[i].chat_id, chat_id) == 0) {
+            cap_im_tg_delete_message(chat_id, s_tg.stage_msgs[i].message_id);
+            s_tg.stage_msgs[i].message_id = 0;
+            s_tg.stage_msgs[i].chat_id[0] = '\0';
+        }
+    }
 }
 
 static const char *cap_im_tg_basename(const char *path)
@@ -842,6 +1324,15 @@ static const char *cap_im_tg_guess_mime_type(const char *path, bool is_image)
     }
     if (strcasecmp(ext, ".json") == 0) {
         return "application/json";
+    }
+    if (strcasecmp(ext, ".ogg") == 0 || strcasecmp(ext, ".oga") == 0) {
+        return "audio/ogg";
+    }
+    if (strcasecmp(ext, ".mp3") == 0) {
+        return "audio/mpeg";
+    }
+    if (strcasecmp(ext, ".wav") == 0) {
+        return "audio/wav";
     }
 
     return is_image ? "image/jpeg" : "application/octet-stream";
@@ -1109,6 +1600,34 @@ static esp_err_t cap_im_tg_send_media(const char *chat_id,
     return ESP_OK;
 }
 
+static esp_err_t cap_im_tg_send_voice(const char *chat_id, const char *path)
+{
+    esp_err_t err = cap_im_tg_send_multipart_file("sendVoice", "voice", chat_id, path, NULL, false);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Telegram voice send failed chat=%s path=%s err=%s",
+                 chat_id ? chat_id : "", path ? path : "", esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Telegram voice send success to %s: %s", chat_id, path);
+    return ESP_OK;
+}
+
+static esp_err_t cap_im_tg_send_audio(const char *chat_id, const char *path)
+{
+    esp_err_t err = cap_im_tg_send_multipart_file("sendAudio", "audio", chat_id, path, NULL, false);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Telegram audio send failed chat=%s path=%s err=%s",
+                 chat_id ? chat_id : "", path ? path : "", esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Telegram audio send success to %s: %s", chat_id, path);
+    return ESP_OK;
+}
+
 static void cap_im_tg_poll_task(void *arg)
 {
     (void)arg;
@@ -1175,6 +1694,39 @@ static esp_err_t cap_im_tg_gateway_start(void)
         s_tg.attachment_task = NULL;
         return ESP_FAIL;
     }
+    if (!s_tg.tts_queue) {
+        s_tg.tts_queue = xQueueCreate(CAP_IM_TG_TTS_QUEUE_LEN, sizeof(cap_im_tg_tts_job_t *));
+        if (!s_tg.tts_queue) {
+            s_tg.stop_requested = true;
+            while (s_tg.attachment_task) {
+                vTaskDelay(pdMS_TO_TICKS(20));
+            }
+            vQueueDelete(s_tg.attachment_queue);
+            s_tg.attachment_queue = NULL;
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "tg_tts",
+                              .stack_size = 6144,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_tg_tts_task,
+                          NULL,
+                          &s_tg.tts_task);
+    if (ok != pdPASS) {
+        s_tg.stop_requested = true;
+        while (s_tg.attachment_task) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        vQueueDelete(s_tg.attachment_queue);
+        s_tg.attachment_queue = NULL;
+        vQueueDelete(s_tg.tts_queue);
+        s_tg.tts_queue = NULL;
+        return ESP_FAIL;
+    }
     ok = claw_task_create(&(claw_task_config_t){
                               .name = "tg_poll",
                               .stack_size = 6144,
@@ -1188,11 +1740,13 @@ static esp_err_t cap_im_tg_gateway_start(void)
     if (ok != pdPASS) {
         s_tg.stop_requested = true;
         s_tg.poll_task = NULL;
-        while (s_tg.attachment_task) {
+        while (s_tg.attachment_task || s_tg.tts_task) {
             vTaskDelay(pdMS_TO_TICKS(20));
         }
         vQueueDelete(s_tg.attachment_queue);
         s_tg.attachment_queue = NULL;
+        vQueueDelete(s_tg.tts_queue);
+        s_tg.tts_queue = NULL;
         return ESP_FAIL;
     }
 
@@ -1224,6 +1778,14 @@ static esp_err_t cap_im_tg_gateway_stop(void)
         return ESP_ERR_TIMEOUT;
     }
 
+    while (s_tg.tts_task && xTaskGetTickCount() < deadline) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    if (s_tg.tts_task) {
+        return ESP_ERR_TIMEOUT;
+    }
+
     if (s_tg.attachment_queue) {
         cap_im_tg_attachment_job_t *job = NULL;
 
@@ -1232,6 +1794,22 @@ static esp_err_t cap_im_tg_gateway_stop(void)
         }
         vQueueDelete(s_tg.attachment_queue);
         s_tg.attachment_queue = NULL;
+    }
+
+    if (s_tg.tts_queue) {
+        cap_im_tg_tts_job_t *job = NULL;
+
+        while (xQueueReceive(s_tg.tts_queue, &job, 0) == pdTRUE) {
+            cap_im_tg_free_tts_job(job);
+        }
+        vQueueDelete(s_tg.tts_queue);
+        s_tg.tts_queue = NULL;
+    }
+
+    for (size_t i = 0; i < CAP_IM_TG_TTS_CACHE_SIZE; i++) {
+        free(s_tg.tts_cache[i].text);
+        s_tg.tts_cache[i].text = NULL;
+        s_tg.tts_cache[i].id = 0;
     }
 
     return ESP_OK;
@@ -1245,8 +1823,13 @@ static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
     cJSON *root = NULL;
     cJSON *chat_id_json;
     cJSON *message_json;
+    cJSON *event_type_json;
     const char *chat_id = NULL;
     const char *message = NULL;
+    const char *event_type = NULL;
+    bool attach_tts_button = false;
+    bool is_stage_message = false;
+    int64_t sent_message_id = 0;
     esp_err_t err;
 
     root = cJSON_Parse(input_json ? input_json : "{}");
@@ -1257,6 +1840,7 @@ static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
 
     chat_id_json = cJSON_GetObjectItem(root, "chat_id");
     message_json = cJSON_GetObjectItem(root, "message");
+    event_type_json = cJSON_GetObjectItem(root, "event_type");
     if (cJSON_IsString(chat_id_json) && chat_id_json->valuestring && chat_id_json->valuestring[0]) {
         chat_id = chat_id_json->valuestring;
     } else if (ctx && ctx->chat_id && ctx->chat_id[0]) {
@@ -1265,6 +1849,13 @@ static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
     if (cJSON_IsString(message_json) && message_json->valuestring && message_json->valuestring[0]) {
         message = message_json->valuestring;
     }
+    if (cJSON_IsString(event_type_json) && event_type_json->valuestring) {
+        event_type = event_type_json->valuestring;
+    }
+    if (event_type && strcmp(event_type, "out_message") == 0) {
+        attach_tts_button = true;
+    }
+    is_stage_message = event_type && strcmp(event_type, "agent_stage") == 0;
 
     if (!chat_id || !message) {
         cJSON_Delete(root);
@@ -1274,7 +1865,17 @@ static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = cap_im_tg_send_text(chat_id, message);
+    /* The real reply is about to replace any "thinking..." style stage
+     * updates already shown for this chat, so make them vanish first. */
+    if (attach_tts_button) {
+        cap_im_tg_clear_stage_messages(chat_id);
+    }
+
+    err = cap_im_tg_send_text_ex(chat_id, message, attach_tts_button,
+                                 is_stage_message ? &sent_message_id : NULL);
+    if (err == ESP_OK && is_stage_message) {
+        cap_im_tg_track_stage_message(chat_id, sent_message_id);
+    }
     cJSON_Delete(root);
     if (err != ESP_OK) {
         snprintf(output, output_size, "Error: %s", esp_err_to_name(err));
@@ -1356,6 +1957,100 @@ static esp_err_t cap_im_tg_send_file_execute(const char *input_json,
     return cap_im_tg_send_media_execute(input_json, ctx, output, output_size, false);
 }
 
+static esp_err_t cap_im_tg_send_voice_execute(const char *input_json,
+                                              const claw_cap_call_context_t *ctx,
+                                              char *output,
+                                              size_t output_size)
+{
+    cJSON *root = NULL;
+    cJSON *chat_id_json;
+    cJSON *path_json;
+    const char *chat_id = NULL;
+    const char *path = NULL;
+    esp_err_t err;
+
+    root = cJSON_Parse(input_json ? input_json : "{}");
+    if (!root) {
+        snprintf(output, output_size, "Error: invalid JSON");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    chat_id_json = cJSON_GetObjectItem(root, "chat_id");
+    path_json = cJSON_GetObjectItem(root, "path");
+    if (cJSON_IsString(chat_id_json) && chat_id_json->valuestring && chat_id_json->valuestring[0]) {
+        chat_id = chat_id_json->valuestring;
+    } else if (ctx && ctx->chat_id && ctx->chat_id[0]) {
+        chat_id = ctx->chat_id;
+    }
+    if (cJSON_IsString(path_json) && path_json->valuestring && path_json->valuestring[0]) {
+        path = path_json->valuestring;
+    }
+
+    if (!chat_id || !path) {
+        cJSON_Delete(root);
+        snprintf(output, output_size,
+                 "Error: chat_id and path are required (chat_id may come from ctx)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    err = cap_im_tg_send_voice(chat_id, path);
+    cJSON_Delete(root);
+    if (err != ESP_OK) {
+        snprintf(output, output_size, "Error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    snprintf(output, output_size, "reply already sent to user");
+    return ESP_OK;
+}
+
+static esp_err_t cap_im_tg_send_audio_execute(const char *input_json,
+                                              const claw_cap_call_context_t *ctx,
+                                              char *output,
+                                              size_t output_size)
+{
+    cJSON *root = NULL;
+    cJSON *chat_id_json;
+    cJSON *path_json;
+    const char *chat_id = NULL;
+    const char *path = NULL;
+    esp_err_t err;
+
+    root = cJSON_Parse(input_json ? input_json : "{}");
+    if (!root) {
+        snprintf(output, output_size, "Error: invalid JSON");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    chat_id_json = cJSON_GetObjectItem(root, "chat_id");
+    path_json = cJSON_GetObjectItem(root, "path");
+    if (cJSON_IsString(chat_id_json) && chat_id_json->valuestring && chat_id_json->valuestring[0]) {
+        chat_id = chat_id_json->valuestring;
+    } else if (ctx && ctx->chat_id && ctx->chat_id[0]) {
+        chat_id = ctx->chat_id;
+    }
+    if (cJSON_IsString(path_json) && path_json->valuestring && path_json->valuestring[0]) {
+        path = path_json->valuestring;
+    }
+
+    if (!chat_id || !path) {
+        cJSON_Delete(root);
+        snprintf(output, output_size,
+                 "Error: chat_id and path are required (chat_id may come from ctx)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    err = cap_im_tg_send_audio(chat_id, path);
+    cJSON_Delete(root);
+    if (err != ESP_OK) {
+        snprintf(output, output_size, "Error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    snprintf(output, output_size, "reply already sent to user");
+    return ESP_OK;
+}
+
 static const claw_cap_descriptor_t s_tg_descriptors[] = {
     {
         .id = "tg_gateway",
@@ -1403,6 +2098,28 @@ static const claw_cap_descriptor_t s_tg_descriptors[] = {
         "{\"type\":\"object\",\"properties\":{\"chat_id\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"caption\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
         .execute = cap_im_tg_send_file_execute,
     },
+    {
+        .id = "tg_send_voice",
+        .name = "tg_send_voice",
+        .family = "im",
+        .description = "Send a local audio file as a Telegram voice note.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"chat_id\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
+        .execute = cap_im_tg_send_voice_execute,
+    },
+    {
+        .id = "tg_send_audio",
+        .name = "tg_send_audio",
+        .family = "im",
+        .description = "Send a local audio file (e.g. wav/mp3) to a Telegram chat as a music-style audio attachment.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"chat_id\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
+        .execute = cap_im_tg_send_audio_execute,
+    },
 };
 
 static const claw_cap_group_t s_tg_group = {
@@ -1436,6 +2153,17 @@ esp_err_t cap_im_tg_set_token(const char *bot_token)
     s_tg.next_update_id = 0;
     memset(s_tg.seen_update_keys, 0, sizeof(s_tg.seen_update_keys));
     s_tg.seen_update_idx = 0;
+    return ESP_OK;
+}
+
+esp_err_t cap_im_tg_set_allowed_chat_ids(const char *allowed_chat_ids)
+{
+    if (!s_tg_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    strlcpy(s_tg.allowed_chat_ids, allowed_chat_ids ? allowed_chat_ids : "",
+           sizeof(s_tg.allowed_chat_ids));
     return ESP_OK;
 }
 
@@ -1482,16 +2210,19 @@ esp_err_t cap_im_tg_stop(void)
     return cap_im_tg_gateway_stop();
 }
 
-esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
+static esp_err_t cap_im_tg_send_text_ex(const char *chat_id,
+                                        const char *text,
+                                        bool attach_tts_button,
+                                        int64_t *out_last_message_id)
 {
-    if (!s_tg_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     size_t text_len;
     size_t offset = 0;
     esp_err_t last_err = ESP_OK;
+    uint32_t tts_id = 0;
 
+    if (!s_tg_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if (!chat_id || !text || text[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
@@ -1499,11 +2230,16 @@ esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
         return ESP_ERR_INVALID_STATE;
     }
 
+    if (attach_tts_button) {
+        tts_id = cap_im_tg_tts_cache_store(chat_id, text);
+    }
+
     text_len = strlen(text);
     while (offset < text_len) {
         size_t chunk_len = text_len - offset;
         char *chunk = NULL;
         esp_err_t err;
+        bool is_last_chunk;
 
         if (chunk_len > CAP_IM_TG_MAX_MSG_LEN) {
             chunk_len = claw_utils_utf8_prefix_len(text + offset, CAP_IM_TG_MAX_MSG_LEN);
@@ -1511,6 +2247,7 @@ esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
                 return ESP_ERR_INVALID_ARG;
             }
         }
+        is_last_chunk = (offset + chunk_len >= text_len);
 
         chunk = calloc(1, chunk_len + 1);
         if (!chunk) {
@@ -1518,7 +2255,8 @@ esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
         }
 
         memcpy(chunk, text + offset, chunk_len);
-        err = cap_im_tg_send_text_chunk(chat_id, chunk);
+        err = cap_im_tg_send_text_chunk_ex(chat_id, chunk, is_last_chunk ? tts_id : 0,
+                                           is_last_chunk ? out_last_message_id : NULL);
         free(chunk);
         if (err != ESP_OK) {
             last_err = err;
@@ -1528,6 +2266,11 @@ esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
     }
 
     return last_err;
+}
+
+esp_err_t cap_im_tg_send_text(const char *chat_id, const char *text)
+{
+    return cap_im_tg_send_text_ex(chat_id, text, false, NULL);
 }
 
 esp_err_t cap_im_tg_send_image(const char *chat_id, const char *path, const char *caption)

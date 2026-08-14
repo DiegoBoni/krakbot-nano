@@ -54,6 +54,7 @@ esp_err_t claw_llm_runtime_infer_media(claw_llm_runtime_t *runtime,
                                        char **out_text,
                                        char **out_error_message);
 void claw_llm_runtime_deinit(claw_llm_runtime_t *runtime);
+const char *claw_llm_runtime_get_model(const claw_llm_runtime_t *runtime);
 
 esp_err_t claw_llm_register_custom_backend(const claw_llm_custom_backend_registration_t *registration);
 const claw_llm_backend_registration_t *claw_llm_find_backend_registration(const char *id);

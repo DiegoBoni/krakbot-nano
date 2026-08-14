@@ -205,6 +205,11 @@ void claw_core_agent_loop_task(void *arg)
             }
         }
 
+        /* Immediate "working on it" ack, published as a stage message so it
+         * rides the same channel-side ephemeral tracking as other agent_stage
+         * updates and gets deleted once the real reply is sent. */
+        (void)claw_core_publish_stage_text(&request.view, "🐙 KrakBot Nano ya se está ocupando...");
+
         {
             const char *user_texts[1] = {request.view.user_text};
             esp_err_t persist_err = claw_core_persist_context_user_messages_if_configured(

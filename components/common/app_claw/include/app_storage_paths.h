@@ -28,6 +28,7 @@ typedef struct {
     char router_rules_path[APP_CLAW_FILE_PATH_LEN];   /**< Event router rules file */
     char scheduler_rules_path[APP_CLAW_FILE_PATH_LEN];/**< Scheduler rules file */
     char im_attachment_root[APP_CLAW_PATH_LEN];       /**< IM attachment inbox */
+    char tts_cache_root[APP_CLAW_PATH_LEN];           /**< Generated TTS audio cache */
 } app_claw_storage_paths_t;
 
 #ifdef __cplusplus

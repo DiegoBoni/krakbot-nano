@@ -74,6 +74,9 @@ typedef struct {
     char *raw_message_json;
     claw_llm_tool_call_t *tool_calls;
     size_t tool_call_count;
+    uint32_t prompt_tokens;
+    uint32_t completion_tokens;
+    uint32_t total_tokens;
 } claw_llm_response_t;
 
 typedef struct {

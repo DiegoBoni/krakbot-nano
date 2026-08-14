@@ -5,6 +5,7 @@
  */
 #include "claw_core_internal.h"
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -219,6 +220,51 @@ esp_err_t claw_core_publish_stage_text(const claw_core_request_t *request, const
     return pub_err;
 }
 
+/* Rotating, human-friendly connector phrases (Spanish) shown while the
+ * agent is working through tool calls. Kept short so several tool names
+ * still fit inside the 256-byte stage buffer. */
+static const char *const s_tool_call_phrases[] = {
+    "Revolviendo la caja de herramientas",
+    "Curioseando con",
+    "Metiendo mano en",
+    "Buscando entre las herramientas",
+    "Trasteando con",
+    "Sacando",
+};
+#define CLAW_CORE_TOOL_CALL_PHRASE_COUNT \
+    (sizeof(s_tool_call_phrases) / sizeof(s_tool_call_phrases[0]))
+
+/* Turns a raw tool/function identifier such as "mcp_call_tool" or
+ * "get_weather" into a friendlier "Mcp Call Tool" / "Get Weather" label,
+ * with no argument payload attached. */
+static void format_friendly_tool_name(const char *name, char *out, size_t out_size)
+{
+    size_t o = 0;
+    bool capitalize = true;
+
+    if (!out || out_size == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (!name) {
+        return;
+    }
+
+    for (size_t i = 0; name[i] && o + 1 < out_size; i++) {
+        char c = name[i];
+        if (c == '_' || c == '-' || c == '.') {
+            if (o > 0 && out[o - 1] != ' ') {
+                out[o++] = ' ';
+            }
+            capitalize = true;
+            continue;
+        }
+        out[o++] = capitalize ? (char)toupper((unsigned char)c) : c;
+        capitalize = false;
+    }
+    out[o] = '\0';
+}
+
 void claw_core_publish_stage_tool_calls(const claw_core_request_t *request,
                                         const claw_core_llm_response_t *response,
                                         uint32_t iteration)
@@ -238,8 +284,7 @@ void claw_core_publish_stage_tool_calls(const claw_core_request_t *request,
         size_t prefix_len = claw_utils_utf8_prefix_len(response->reasoning_content,
                                                  CLAW_CORE_STAGE_REASONING_SNIPPET_LEN);
 
-        written = snprintf(buf, sizeof(buf), "🦞 [Round %" PRIu32 "] %.*s%s",
-                           iteration + 1,
+        written = snprintf(buf, sizeof(buf), "🐙 %.*s%s",
                            (int)prefix_len,
                            response->reasoning_content,
                            reasoning_len > prefix_len ? "..." : "");
@@ -254,25 +299,18 @@ void claw_core_publish_stage_tool_calls(const claw_core_request_t *request,
         return;
     }
 
-    written = snprintf(buf, sizeof(buf), "🦞 [Round %" PRIu32 "] Snap: ", iteration + 1);
+    written = snprintf(buf, sizeof(buf), "🐙 %s: ",
+                       s_tool_call_phrases[iteration % CLAW_CORE_TOOL_CALL_PHRASE_COUNT]);
     if (written < 0 || (size_t)written >= sizeof(buf)) {
         return;
     }
     off = (size_t)written;
 
     for (i = 0; i < response->tool_call_count; i++) {
-        const char *name = response->tool_calls[i].name ? response->tool_calls[i].name : "?";
-        const char *args = response->tool_calls[i].arguments_json;
-        if (args && args[0]) {
-            size_t arg_len = strlen(args);
-            size_t prefix_len = claw_utils_utf8_prefix_len(args, 40);
-            written = snprintf(buf + off, sizeof(buf) - off, "%s%s(%.*s%s)",
-                               i == 0 ? "" : ", ", name, (int)prefix_len, args,
-                               arg_len > prefix_len ? "..." : "");
-        } else {
-            written = snprintf(buf + off, sizeof(buf) - off, "%s%s",
-                               i == 0 ? "" : ", ", name);
-        }
+        char friendly[64];
+        format_friendly_tool_name(response->tool_calls[i].name, friendly, sizeof(friendly));
+        written = snprintf(buf + off, sizeof(buf) - off, "%s%s",
+                           i == 0 ? "" : ", ", friendly[0] ? friendly : "?");
         if (written < 0 || (size_t)written >= sizeof(buf) - off) {
             break;
         }
@@ -314,7 +352,7 @@ void claw_core_publish_stage_note_for_round(claw_core_state_t *core,
         return;
     }
 
-    written = snprintf(buf, sizeof(buf), "🦞 [Round %" PRIu32 "] %s", round_index + 1, stage_note);
+    written = snprintf(buf, sizeof(buf), "🐙 %s", stage_note);
     if (written < 0 || (size_t)written >= sizeof(buf)) {
         free(stage_note);
         return;
@@ -322,7 +360,7 @@ void claw_core_publish_stage_note_for_round(claw_core_state_t *core,
     (void)claw_core_publish_stage_text(request, buf);
 #else
     (void)request;
-    (void)round_index;
 #endif
+    (void)round_index;
     free(stage_note);
 }

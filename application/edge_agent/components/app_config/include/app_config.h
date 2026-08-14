@@ -18,6 +18,7 @@ extern "C" {
 #define APP_WIFI_SSID             CONFIG_APP_WIFI_SSID
 #define APP_WIFI_PASSWORD         CONFIG_APP_WIFI_PASSWORD
 #define APP_SEARCH_HTTP_ALLOWLIST CONFIG_APP_SEARCH_HTTP_ALLOWLIST
+#define APP_ADMIN_PASSWORD        CONFIG_APP_HTTP_ADMIN_PASSWORD
 
 typedef struct {
     char wifi_ssid[APP_CONFIG_STR_LEN];
@@ -25,6 +26,7 @@ typedef struct {
     char ap_ssid[APP_CONFIG_STR_LEN];
     char ap_password[APP_CONFIG_STR_LEN];
     char ap_behavior[16];
+    char admin_password[APP_CONFIG_STR_LEN];
     char llm_api_key[APP_CONFIG_STR_LEN];
     char llm_backend_type[32];
     char llm_model[64];
@@ -43,6 +45,7 @@ typedef struct {
     char feishu_app_id[64];
     char feishu_app_secret[APP_CONFIG_STR_LEN];
     char tg_bot_token[APP_CONFIG_STR_LEN];
+    char tg_allowed_chat_ids[APP_CONFIG_STR_LEN];
     char wechat_token[APP_CONFIG_STR_LEN];
     char wechat_base_url[APP_CONFIG_STR_LEN];
     char wechat_cdn_base_url[APP_CONFIG_STR_LEN];
@@ -50,6 +53,12 @@ typedef struct {
     char search_brave_key[APP_CONFIG_STR_LEN];
     char search_tavily_key[APP_CONFIG_STR_LEN];
     char search_http_allowlist[APP_CONFIG_STR_LEN];
+    char asr_api_key[APP_CONFIG_STR_LEN];
+    char asr_model[64];
+    char tts_api_key[APP_CONFIG_STR_LEN];
+    char tts_voice[32];
+    char tts_model[32];
+    char tts_provider[8];
     char enabled_cap_groups[APP_CONFIG_STR_LEN];
     char llm_visible_cap_groups[APP_CONFIG_STR_LEN];
     char enabled_lua_modules[APP_CONFIG_STR_LEN];

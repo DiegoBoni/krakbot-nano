@@ -42,6 +42,7 @@ typedef struct {
     char feishu_app_id[APP_CLAW_MODEL_LEN];
     char feishu_app_secret[APP_CLAW_STR_LEN];
     char tg_bot_token[APP_CLAW_STR_LEN];
+    char tg_allowed_chat_ids[APP_CLAW_STR_LEN];
     char wechat_token[APP_CLAW_STR_LEN];
     char wechat_base_url[APP_CLAW_STR_LEN];
     char wechat_cdn_base_url[APP_CLAW_STR_LEN];
@@ -55,6 +56,10 @@ typedef struct {
     char asr_language_hint[APP_CLAW_SHORT_STR_LEN];
     char asr_model[APP_CLAW_MODEL_LEN];
     char asr_endpoint[APP_CLAW_STR_LEN];
+    char tts_api_key[APP_CLAW_STR_LEN];
+    char tts_voice[APP_CLAW_SHORT_STR_LEN];
+    char tts_model[APP_CLAW_SHORT_STR_LEN];
+    char tts_provider[8];
     char enabled_cap_groups[APP_CLAW_STR_LEN];
     char llm_visible_cap_groups[APP_CLAW_STR_LEN];
     char enabled_lua_modules[APP_CLAW_STR_LEN];
