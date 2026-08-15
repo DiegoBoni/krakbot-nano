@@ -4574,6 +4574,19 @@ CONFIG_APP_CLAW_LUA_MODULE_SYSTEM=y
 # end of App Claw Config
 
 #
+# LED Status Indicator
+#
+# default:
+CONFIG_LED_STATUS_INDICATOR_ENABLE=y
+# default:
+CONFIG_LED_STATUS_GPIO_NUM=48
+# default:
+CONFIG_LED_STATUS_LED_COUNT=1
+# default:
+CONFIG_LED_STATUS_MAX_BRIGHTNESS=60
+# end of LED Status Indicator
+
+#
 # IoT Button
 #
 # default:

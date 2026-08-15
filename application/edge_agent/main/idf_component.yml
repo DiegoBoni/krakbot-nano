@@ -36,6 +36,9 @@ dependencies:
   wifi_manager:
     path: ../../../components/common/wifi_manager
 
+  led_status_indicator:
+    path: ../../../components/common/led_status_indicator
+
   esp_video:
     path: ../../../components/common/esp_video
     matches:

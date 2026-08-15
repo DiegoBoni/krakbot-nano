@@ -1,0 +1,43 @@
+menu "LED Status Indicator"
+
+    config LED_STATUS_INDICATOR_ENABLE
+        bool "Enable RGB LED status indicator"
+        default y
+        help
+            Drive the onboard WS2812 RGB LED(s) to reflect device state
+            (boot, idle, agent thinking, tool execution, Wi-Fi connectivity,
+            errors, and one-shot notifications). Disable if the board has
+            no addressable RGB LED wired up.
+
+    config LED_STATUS_GPIO_NUM
+        int "LED strip data GPIO"
+        depends on LED_STATUS_INDICATOR_ENABLE
+        default 48
+        help
+            GPIO driving the WS2812 data line. Defaults to the pin used by
+            the board's single onboard RGB LED (see board_peripherals.yaml
+            rmt_tx). N16R8 DevKitC-1 variants commonly wire this to GPIO48
+            (older/other variants use GPIO38) — if the physical wiring
+            differs, update this value.
+
+    config LED_STATUS_LED_COUNT
+        int "Number of LEDs on the strip"
+        depends on LED_STATUS_INDICATOR_ENABLE
+        default 1
+        range 1 64
+        help
+            Number of WS2812 LEDs chained on LED_STATUS_GPIO_NUM. All LEDs
+            are driven in sync with the same color/brightness. The stock
+            ESP32-S3-DevKitC-1 (and clones) ship with a single onboard LED.
+
+    config LED_STATUS_MAX_BRIGHTNESS
+        int "Maximum LED brightness (0-255)"
+        depends on LED_STATUS_INDICATOR_ENABLE
+        default 60
+        range 1 255
+        help
+            Brightness ceiling applied to every rendered color, to keep
+            power draw and glare reasonable. Full WS2812 brightness (255)
+            is very bright at close range.
+
+endmenu

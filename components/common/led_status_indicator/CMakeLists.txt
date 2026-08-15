@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "led_status_indicator.c"
+        "led_status_animations.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_timer
+        freertos
+        led_strip
+        app_claw
+        wifi_manager
+        claw_core
+)

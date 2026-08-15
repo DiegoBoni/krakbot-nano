@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "wifi_manager.h"
+#include "led_status_indicator.h"
 #include "time.h"
 #include "nvs_flash.h"
 #include "http_server.h"
@@ -36,6 +37,7 @@ static const char *TAG = "app";
 
 static app_config_t *s_config;
 static app_claw_config_t *s_claw_config;
+static led_status_indicator_handle_t s_led_status;
 
 static esp_err_t app_allocate_runtime_state(void)
 {
@@ -111,6 +113,9 @@ static esp_err_t main_save_config(const app_config_t *config)
     err = app_config_save(config);
     if (err != ESP_OK) {
         return err;
+    }
+    if (s_led_status) {
+        led_status_indicator_notify(s_led_status, LED_STATUS_EVENT_CONFIG_SAVED);
     }
 
     claw_config = calloc(1, sizeof(*claw_config));
@@ -337,6 +342,18 @@ void app_main(void)
     ESP_ERROR_CHECK(claw_paths_set(CLAW_PATH_SYSTEM, app_fs_system_base_path()));
 
     ESP_ERROR_CHECK(wifi_manager_init());
+
+#if CONFIG_LED_STATUS_INDICATOR_ENABLE
+    led_status_indicator_config_t led_status_config = LED_STATUS_INDICATOR_CONFIG_DEFAULT();
+    esp_err_t led_status_err = led_status_indicator_create(&led_status_config, &s_led_status);
+    if (led_status_err == ESP_OK) {
+        led_status_err = led_status_indicator_start(s_led_status);
+    }
+    if (led_status_err != ESP_OK) {
+        ESP_LOGW(TAG, "LED status indicator unavailable: %s", esp_err_to_name(led_status_err));
+        s_led_status = NULL;
+    }
+#endif
 
     ESP_ERROR_CHECK(app_claw_ui_start());
 
