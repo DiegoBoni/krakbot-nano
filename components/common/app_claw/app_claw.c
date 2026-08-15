@@ -66,7 +66,8 @@ static const char *APP_STARTUP_EVENT_KEY = "boot_completed";
     "Skills are user-facing functions, while Capabilities are internal functions used by the model. " \
     "When communicating with the user, refer to skills instead of Capabilities. " \
     "Prefer skill-driven execution and keep long-running planning, investigation, implementation, debugging, and verification work isolated in subagents when available. " \
-    "Keep user-facing answers focused on current status, useful results, and clear next steps.\n"
+    "Keep user-facing answers focused on current status, useful results, and clear next steps. " \
+    "When the tts_speak capability is available and the user asks for a voice/audio reply (e.g. 'contestame por audio', 'mandame la respuesta en voz', 'reply with voice'), call tts_speak with your reply text instead of only sending it as plain text.\n"
 
 #define APP_ROOT_AGENT_SYSTEM_PROMPT \
     "You are the root agent. Own the user-facing conversation and keep the session responsive. " \
@@ -755,6 +756,118 @@ static void app_claw_migrate_router_rules(const char *rules_path)
 
     cJSON_Delete(root);
 }
+
+// Recovery seed updates only fill in files missing from DATA (see comment on
+// app_claw_migrate_router_rules above), so devices provisioned before the
+// "im_audio_attachment_transcribe" rule was added to the seed (b162b87) never
+// receive it: their router_rules.json keeps routing audio attachments only
+// through the generic "im_attachment_saved_reply" rule, which just replies
+// "File received..." and never calls groq_transcribe. This inserts the
+// missing rule (verbatim from the .recovery seed) right before
+// "im_attachment_saved_reply" so it still consumes the event first, without
+// touching any rule the user may have customized since.
+static void app_claw_migrate_router_rules_add_audio_transcribe(const char *rules_path)
+{
+    static const char *const rule_id = "im_audio_attachment_transcribe";
+    static const char *const insert_before_id = "im_attachment_saved_reply";
+    static const char *const rule_json =
+        "{"
+        "\"id\":\"im_audio_attachment_transcribe\","
+        "\"description\":\"Transcribe inbound voice/audio attachments via Groq and route the text to the agent.\","
+        "\"enabled\":true,"
+        "\"consume_on_match\":true,"
+        "\"ack\":\"{{event.source_channel}} audio attachment sent for transcription\","
+        "\"match\":{\"event_type\":\"attachment_saved\",\"content_type\":\"audio\"},"
+        "\"actions\":[{\"type\":\"call_cap\",\"cap\":\"groq_transcribe\",\"input\":{"
+        "\"saved_path\":\"{{event.payload.saved_path}}\","
+        "\"chat_id\":\"{{event.chat_id}}\","
+        "\"channel\":\"{{event.source_channel}}\","
+        "\"sender_id\":\"{{event.sender_id}}\","
+        "\"message_id\":\"{{event.message_id}}\""
+        "}}]"
+        "}";
+    FILE *file = NULL;
+    long size = 0;
+    char *buf = NULL;
+    cJSON *root = NULL;
+    cJSON *rule = NULL;
+    cJSON *new_rule = NULL;
+    int insert_at = -1;
+    int index = 0;
+
+    if (!rules_path || !rules_path[0]) {
+        return;
+    }
+
+    file = fopen(rules_path, "rb");
+    if (!file) {
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 ||
+            fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return;
+    }
+    buf = calloc(1, (size_t)size + 1);
+    if (!buf) {
+        fclose(file);
+        return;
+    }
+    if (fread(buf, 1, (size_t)size, file) != (size_t)size) {
+        fclose(file);
+        free(buf);
+        return;
+    }
+    fclose(file);
+
+    root = cJSON_Parse(buf);
+    free(buf);
+    if (!cJSON_IsArray(root)) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    cJSON_ArrayForEach(rule, root) {
+        cJSON *id = cJSON_GetObjectItem(rule, "id");
+
+        if (cJSON_IsString(id) && strcmp(id->valuestring, rule_id) == 0) {
+            cJSON_Delete(root);
+            return;
+        }
+        if (cJSON_IsString(id) && insert_at < 0 && strcmp(id->valuestring, insert_before_id) == 0) {
+            insert_at = index;
+        }
+        index++;
+    }
+
+    new_rule = cJSON_Parse(rule_json);
+    if (!new_rule) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    if (insert_at >= 0) {
+        cJSON_InsertItemInArray(root, insert_at, new_rule);
+    } else {
+        cJSON_InsertItemInArray(root, 0, new_rule);
+    }
+
+    {
+        char *out_json = cJSON_PrintUnformatted(root);
+
+        if (out_json) {
+            file = fopen(rules_path, "wb");
+            if (file) {
+                fwrite(out_json, 1, strlen(out_json), file);
+                fclose(file);
+                ESP_LOGI(TAG, "Added missing router rule '%s'", rule_id);
+            }
+            free(out_json);
+        }
+    }
+
+    cJSON_Delete(root);
+}
 #endif
 
 // Resolve the storage paths threaded through the capability framework from the
@@ -816,6 +929,7 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
 
 #if CONFIG_APP_CLAW_CAP_EVENT_ROUTER
     app_claw_migrate_router_rules(paths.router_rules_path);
+    app_claw_migrate_router_rules_add_audio_transcribe(paths.router_rules_path);
     router_config.default_route_messages_to_agent = true;
     router_config.rules_path = paths.router_rules_path;
 #endif
@@ -830,17 +944,22 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
 #endif
 
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
-    ESP_RETURN_ON_ERROR(cap_scheduler_init(&(cap_scheduler_config_t) {
-                            .schedules_path = paths.scheduler_rules_path,
-                            .tick_ms = 1000,
-                            .max_items = 32,
-                            .task_stack_size = 6144,
-                            .task_priority = 5,
-                            .task_core = tskNO_AFFINITY,
-                            .publish_event = claw_event_router_publish,
-                            .persist_after_fire = true,
-                        }),
-                        TAG, "Failed to init scheduler");
+    {
+        esp_err_t scheduler_err = cap_scheduler_init(&(cap_scheduler_config_t) {
+                                       .schedules_path = paths.scheduler_rules_path,
+                                       .tick_ms = 1000,
+                                       .max_items = 32,
+                                       .task_stack_size = 6144,
+                                       .task_priority = 5,
+                                       .task_core = tskNO_AFFINITY,
+                                       .publish_event = claw_event_router_publish,
+                                       .persist_after_fire = true,
+                                   });
+        if (scheduler_err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to init scheduler: %s (continuing without scheduled jobs)",
+                     esp_err_to_name(scheduler_err));
+        }
+    }
 #endif
 #if CONFIG_APP_CLAW_CAP_MEMORY
     ESP_RETURN_ON_ERROR(init_memory(config, &paths, max_tool_iterations), TAG, "Failed to init memory");

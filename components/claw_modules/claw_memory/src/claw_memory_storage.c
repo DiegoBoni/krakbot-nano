@@ -64,8 +64,13 @@ esp_err_t claw_memory_load_index(cJSON **out_root)
     free(raw);
     if (!root || !cJSON_IsObject(root)) {
         cJSON_Delete(root);
-        ESP_LOGE(TAG, "Failed to parse memory index: %s", s_memory.index_path);
-        return ESP_FAIL;
+        ESP_LOGW(TAG, "Memory index unreadable, starting fresh: %s", s_memory.index_path);
+        root = claw_memory_new_index_root();
+        if (!root) {
+            return ESP_ERR_NO_MEM;
+        }
+        *out_root = root;
+        return ESP_OK;
     }
 
     /* cJSON_ReplaceItemInObject only takes ownership of the new node when the

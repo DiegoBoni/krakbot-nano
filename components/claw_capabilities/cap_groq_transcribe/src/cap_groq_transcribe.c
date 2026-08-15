@@ -21,6 +21,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "cap_groq_transcribe";
 
@@ -42,6 +44,8 @@ static const char *const s_waiting_messages[] = {
 #define CAP_GROQ_MULTIPART_BOUNDARY   "----cap_groq_transcribe_boundary"
 #define CAP_GROQ_API_KEY_LEN          128
 #define CAP_GROQ_MODEL_LEN            64
+#define CAP_GROQ_MAX_ATTEMPTS         2
+#define CAP_GROQ_RETRY_BACKOFF_MS     400
 
 typedef struct {
     char *buf;
@@ -96,6 +100,16 @@ static esp_err_t cap_groq_http_event_handler(esp_http_client_event_t *event)
     resp->len += (size_t)event->data_len;
     resp->buf[resp->len] = '\0';
     return ESP_OK;
+}
+
+/* Transport-level failures (connect/timeout/reset) and 5xx responses are
+ * worth a short retry; 4xx (bad key, bad request) will just fail again. */
+static bool cap_groq_is_transient_error(esp_err_t err, int status)
+{
+    if (err != ESP_OK) {
+        return true;
+    }
+    return status == 0 || status >= 500;
 }
 
 static const char *cap_groq_basename(const char *path)
@@ -234,53 +248,78 @@ static esp_err_t cap_groq_transcribe_file(const char *path, char **out_text)
     }
     resp.cap = CAP_GROQ_HTTP_RESP_INIT;
 
-    config.url = CAP_GROQ_API_URL;
-    config.method = HTTP_METHOD_POST;
-    config.event_handler = cap_groq_http_event_handler;
-    config.user_data = &resp;
-    config.timeout_ms = CAP_GROQ_HTTP_TIMEOUT_MS;
-    config.buffer_size = 2048;
-    config.buffer_size_tx = 2048;
-    config.crt_bundle_attach = esp_crt_bundle_attach;
-#ifdef CONFIG_HTTP_REUSE_ENABLE
-    config.keep_alive_enable = true;
-#endif
-
-    client = esp_http_client_init(&config);
-    if (!client) {
-        fclose(file);
-        free(resp.buf);
-        return ESP_FAIL;
-    }
-
     snprintf(content_type, sizeof(content_type),
              "multipart/form-data; boundary=" CAP_GROQ_MULTIPART_BOUNDARY);
     snprintf(auth_header, sizeof(auth_header), "Bearer %s", s_groq.api_key);
-    esp_http_client_set_header(client, "Content-Type", content_type);
-    esp_http_client_set_header(client, "Authorization", auth_header);
 
-    err = esp_http_client_open(client, (int)content_length);
-    if (err == ESP_OK) {
-        err = cap_groq_http_client_write_all(client, part_model, (size_t)part_model_len);
-    }
-    if (err == ESP_OK) {
-        err = cap_groq_http_client_write_all(client, part_file, (size_t)part_file_len);
-    }
-    if (err == ESP_OK) {
-        err = cap_groq_stream_file_to_http_client(client, file);
-    }
-    if (err == ESP_OK) {
-        err = cap_groq_http_client_write_all(client, closing, (size_t)closing_len);
-    }
-    if (err == ESP_OK) {
-        if (esp_http_client_fetch_headers(client) < 0) {
-            err = ESP_FAIL;
+    for (int attempt = 0; attempt < CAP_GROQ_MAX_ATTEMPTS; attempt++) {
+        resp.len = 0;
+        if (resp.buf) {
+            resp.buf[0] = '\0';
         }
+        rewind(file);
+
+        config = (esp_http_client_config_t){0};
+        config.url = CAP_GROQ_API_URL;
+        config.method = HTTP_METHOD_POST;
+        config.event_handler = cap_groq_http_event_handler;
+        config.user_data = &resp;
+        config.timeout_ms = CAP_GROQ_HTTP_TIMEOUT_MS;
+        config.buffer_size = 2048;
+        config.buffer_size_tx = 2048;
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+        config.keep_alive_enable = true;
+#endif
+
+        client = esp_http_client_init(&config);
+        if (!client) {
+            err = ESP_FAIL;
+            status = 0;
+            break;
+        }
+
+        esp_http_client_set_header(client, "Content-Type", content_type);
+        esp_http_client_set_header(client, "Authorization", auth_header);
+
+        err = esp_http_client_open(client, (int)content_length);
+        if (err == ESP_OK) {
+            err = cap_groq_http_client_write_all(client, part_model, (size_t)part_model_len);
+        }
+        if (err == ESP_OK) {
+            err = cap_groq_http_client_write_all(client, part_file, (size_t)part_file_len);
+        }
+        if (err == ESP_OK) {
+            err = cap_groq_stream_file_to_http_client(client, file);
+        }
+        if (err == ESP_OK) {
+            err = cap_groq_http_client_write_all(client, closing, (size_t)closing_len);
+        }
+        if (err == ESP_OK) {
+            if (esp_http_client_fetch_headers(client) < 0) {
+                err = ESP_FAIL;
+            }
+        }
+
+        status = esp_http_client_get_status_code(client);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        client = NULL;
+
+        if (err == ESP_OK && status == 200) {
+            break;
+        }
+
+        if (attempt + 1 < CAP_GROQ_MAX_ATTEMPTS && cap_groq_is_transient_error(err, status)) {
+            ESP_LOGW(TAG, "Groq transcription attempt %d failed (err=%s http=%d), retrying",
+                     attempt + 1, esp_err_to_name(err), status);
+            vTaskDelay(pdMS_TO_TICKS(CAP_GROQ_RETRY_BACKOFF_MS));
+            continue;
+        }
+
+        break;
     }
 
-    status = esp_http_client_get_status_code(client);
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
     fclose(file);
 
     if (err != ESP_OK) {

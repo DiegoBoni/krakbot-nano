@@ -22,6 +22,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "cap_openai_tts";
 
@@ -43,6 +45,8 @@ static const char *const s_tts_waiting_messages[] = {
 #define CAP_TTS_GROQ_DEFAULT_VOICE   "autumn"
 
 #define CAP_TTS_HTTP_TIMEOUT_MS 30000
+#define CAP_TTS_TRANSIENT_RETRIES  1
+#define CAP_TTS_RETRY_BACKOFF_MS   400
 #define CAP_TTS_API_KEY_LEN   256
 /* Groq's Orpheus model only outputs uncompressed WAV (OpenAI outputs
  * compact Opus), so for the same speech duration a Groq reply is roughly
@@ -106,6 +110,16 @@ static esp_err_t cap_openai_tts_download_event_handler(esp_http_client_event_t *
     }
     dl->bytes_written += (size_t)event->data_len;
     return ESP_OK;
+}
+
+/* Transport-level failures (connect/timeout/reset) and 5xx responses are
+ * worth a short retry; 4xx (bad key, bad request) will just fail again. */
+static bool cap_tts_is_transient_error(esp_err_t err, int status)
+{
+    if (err != ESP_OK) {
+        return true;
+    }
+    return status == 0 || status >= 500;
 }
 
 static bool cap_tts_is_known_groq_voice(const char *voice)
@@ -202,17 +216,21 @@ static esp_err_t cap_openai_tts_synthesize(const char *text,
         size_t max_text_len = cap_tts_is_groq() ? CAP_TTS_MAX_TEXT_LEN_GROQ : CAP_TTS_MAX_TEXT_LEN_OPENAI;
         char *bounded_text = cap_tts_truncate_text(text, max_text_len);
         bool offer_low_sample_rate = cap_tts_is_groq();
+        bool sample_rate_rejected = false;
+        int transient_retries_left = CAP_TTS_TRANSIENT_RETRIES;
         int attempt;
 
         if (!bounded_text) {
             return ESP_ERR_NO_MEM;
         }
 
-        /* Up to two attempts for Groq: first with a lower sample_rate to
-         * shrink the wav payload, then (only on a 4xx, meaning the field
-         * was rejected) a plain retry at the model's default rate. */
-        for (attempt = 0; attempt < 2; attempt++) {
-            bool with_sample_rate = offer_low_sample_rate && attempt == 0;
+        /* Groq gets up to three attempts: first with a lower sample_rate to
+         * shrink the wav payload, then (only on a 4xx, meaning the field was
+         * rejected) a plain retry at the model's default rate. Either flow
+         * (and the single-attempt OpenAI flow) also gets one extra retry on
+         * a transient transport/5xx failure. */
+        for (attempt = 0; attempt < 3; attempt++) {
+            bool with_sample_rate = offer_low_sample_rate && !sample_rate_rejected;
 
             body = cJSON_CreateObject();
             if (!body) {
@@ -287,7 +305,17 @@ static esp_err_t cap_openai_tts_synthesize(const char *text,
                 ESP_LOGW(TAG,
                         "Groq TTS rejected sample_rate=%d override (http=%d), retrying at default rate",
                         CAP_TTS_GROQ_SAMPLE_RATE, status);
+                sample_rate_rejected = true;
                 remove(out_path);
+                continue;
+            }
+
+            if (transient_retries_left > 0 && cap_tts_is_transient_error(err, status)) {
+                ESP_LOGW(TAG, "TTS request attempt %d failed (provider=%s err=%s http=%d), retrying",
+                         attempt + 1, s_tts.provider, esp_err_to_name(err), status);
+                transient_retries_left--;
+                remove(out_path);
+                vTaskDelay(pdMS_TO_TICKS(CAP_TTS_RETRY_BACKOFF_MS));
                 continue;
             }
 

@@ -5,6 +5,7 @@
  */
 #include "llm/claw_llm_http_transport.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -343,8 +344,28 @@ esp_err_t claw_llm_http_post_json(const claw_llm_http_json_request_t *request,
             ESP_LOGW(TAG, "HTTP perform aborted: %s", esp_err_to_name(err));
             err = ESP_ERR_INVALID_STATE;
         } else {
-            *out_error_message = dup_printf("HTTP request failed: %s", esp_err_to_name(err));
-            ESP_LOGE(TAG, "HTTP perform failed: %s", esp_err_to_name(err));
+            /* esp_http_client_perform() collapses most transport failures (TCP
+             * reset, TLS handshake failure, DNS lookup failure, read timeout)
+             * into the single generic ESP_FAIL code, which is useless on its
+             * own for diagnosing why an LLM chat call failed. Surface the
+             * socket errno as well so a bad clock/cert, dropped Wi-Fi, or DNS
+             * failure can be told apart from the chat error text/logs. */
+            int client_errno = esp_http_client_get_errno(client);
+
+            if (client_errno != 0) {
+                *out_error_message = dup_printf("HTTP request failed: %s (errno=%d %s)",
+                                                esp_err_to_name(err), client_errno,
+                                                strerror(client_errno));
+                ESP_LOGE(TAG, "HTTP perform failed: %s (errno=%d %s) url=%s",
+                         esp_err_to_name(err), client_errno, strerror(client_errno), request->url);
+            } else {
+                *out_error_message = dup_printf(
+                    "HTTP request failed: %s (no socket errno - likely DNS, TLS handshake/cert, "
+                    "or clock not synced)",
+                    esp_err_to_name(err));
+                ESP_LOGE(TAG, "HTTP perform failed: %s url=%s (check DNS/TLS/clock sync)",
+                         esp_err_to_name(err), request->url);
+            }
         }
         goto cleanup;
     }
