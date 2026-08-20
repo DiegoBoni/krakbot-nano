@@ -66,7 +66,13 @@ add_custom_target(edge_agent_prepare_system_fs_image ALL
 )
 
 fatfs_create_rawflash_image(system "${EDGE_AGENT_FATFS_SYSTEM_BUILD_ROOT}" FLASH_IN_PROJECT)
-fatfs_create_spiflash_image(storage "${EDGE_AGENT_FATFS_BUILD_ROOT}" FLASH_IN_PROJECT)
+# storage (DATA) is intentionally NOT FLASH_IN_PROJECT: it holds live device
+# state (memory, sessions, router rules, MCP/Composio registry, scheduler
+# jobs). Including it in the default `idf.py flash` target would silently
+# wipe that data on every routine firmware update. Use `idf.py storage-flash`
+# to deliberately (re)seed it, e.g. for first-time provisioning or a factory
+# reset.
+fatfs_create_spiflash_image(storage "${EDGE_AGENT_FATFS_BUILD_ROOT}")
 
 # Skill / Lua resources are now baked into the read-only system partition
 # so storage can be reformatted at runtime without losing them.

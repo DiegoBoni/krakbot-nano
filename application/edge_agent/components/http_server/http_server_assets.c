@@ -23,6 +23,7 @@ static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_set_hdr(req, "Vary", "Accept-Encoding");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, max-age=0");
     return http_server_send_embedded_file(req,
                                           index_html_gz_start,
                                           index_html_gz_end,

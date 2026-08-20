@@ -1036,14 +1036,25 @@ static esp_err_t claw_event_router_load_rules_from_file(const char *path,
         root = cJSON_Parse(buf);
         free(buf);
         if (!root) {
-            return ESP_ERR_INVALID_RESPONSE;
+            ESP_LOGE(TAG, "Rules file %s contains invalid JSON; resetting to empty rule set", path);
+            root = cJSON_CreateArray();
+            if (!root) {
+                return ESP_ERR_NO_MEM;
+            }
         }
     }
 
     err = claw_event_router_load_rules_from_root(root, out_rules, out_rule_count);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Rules file %s failed validation (%s); resetting to empty rule set",
+                 path, esp_err_to_name(err));
         cJSON_Delete(root);
-        return err;
+        root = cJSON_CreateArray();
+        if (!root) {
+            return ESP_ERR_NO_MEM;
+        }
+        *out_rules = NULL;
+        *out_rule_count = 0;
     }
 
     if (out_root) {
