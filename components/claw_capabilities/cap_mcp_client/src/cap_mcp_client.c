@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#include <stdbool.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -61,6 +62,62 @@ static void cap_mcp_extract_content_text(const cJSON *content,
     output[offset] = '\0';
 }
 
+/* cap_mcp_call_remote_tool / cap_mcp_list_remote_tools return one of these esp_err_t
+ * values before ever reaching the server, for malformed or incomplete arguments. Their
+ * only signal to the caller was previously esp_err_to_name() (e.g. "ESP_ERR_INVALID_ARG"),
+ * which tells the model nothing about what to fix -- give it the actual missing piece so
+ * it can self-correct instead of giving up. */
+static void cap_mcp_request_error_message(esp_err_t err, char *output, size_t output_size)
+{
+    switch (err) {
+    case ESP_ERR_INVALID_ARG:
+        snprintf(output, output_size,
+                 "Error: missing or invalid arguments. You must pass either 'server_id' "
+                 "(the id of a server saved in the device's MCP settings -- call "
+                 "mcp_list_servers to see valid ids) or an ad hoc 'server_url'. If you are "
+                 "retrying a call that used server_id earlier in this conversation, pass "
+                 "that same server_id again -- it is not carried over automatically.");
+        break;
+    case ESP_ERR_NOT_FOUND:
+        snprintf(output, output_size,
+                 "Error: that server_id is not in the device's MCP server registry. Call "
+                 "mcp_list_servers to see valid ids.");
+        break;
+    case ESP_ERR_INVALID_STATE:
+        snprintf(output, output_size,
+                 "Error: that server_id is saved but disabled in the device's MCP "
+                 "settings. Use a different server_id, or ask the user to enable it.");
+        break;
+    default:
+        snprintf(output, output_size, "Error: MCP request failed (%s)", esp_err_to_name(err));
+        break;
+    }
+}
+
+/* Gateway-style MCP servers (e.g. Composio) route hundreds of per-app actions behind a
+ * small set of meta-tools instead of exposing each action as its own top-level tool, so a
+ * direct call with tool_name set to an action slug fails with a "not found" style message
+ * -- either as a JSON-RPC protocol error, or (as Composio does) as a normal tool result
+ * with isError=true and the message in content. Fold the fix-it steps into whichever form
+ * of "not found" the model sees so it can self-correct in the same turn instead of
+ * depending on it having pre-emptively activated a skill that documents this. */
+static void cap_mcp_append_gateway_hint(char *output, size_t output_size)
+{
+    size_t len = strlen(output);
+
+    if (len >= output_size - 1) {
+        return;
+    }
+    snprintf(output + len, output_size - len,
+             " -- This server may be a gateway that does not expose that name as a "
+             "top-level tool directly (common for gateways like Composio that front many "
+             "per-app actions behind a few meta-tools). Call mcp_list_tools on this same "
+             "server_id to see the real top-level tool names, use its discovery/search tool "
+             "to find the correct action slug, then call the execute/run meta-tool with that "
+             "slug passed inside its arguments -- do not call the action slug directly as "
+             "tool_name.");
+}
+
 static esp_err_t cap_mcp_call_execute(const char *input_json,
                                       const claw_cap_call_context_t *ctx,
                                       char *output,
@@ -69,34 +126,40 @@ static esp_err_t cap_mcp_call_execute(const char *input_json,
     cJSON *result = NULL;
     const char *error_message = NULL;
     cJSON *is_error = NULL;
+    bool failed = false;
     esp_err_t err;
 
     (void)ctx;
 
     err = cap_mcp_call_remote_tool(input_json, &result);
     if (err != ESP_OK) {
-        snprintf(output, output_size, "Error: MCP request failed (%s)", esp_err_to_name(err));
+        cap_mcp_request_error_message(err, output, output_size);
         return err;
     }
 
     error_message = cJSON_GetStringValue(cJSON_GetObjectItem(result, "error_message"));
     if (error_message && error_message[0]) {
         snprintf(output, output_size, "Error: %s", error_message);
-        cJSON_Delete(result);
-        return ESP_OK;
-    }
-
-    cap_mcp_extract_content_text(cJSON_GetObjectItem(result, "content"), output, output_size);
-    if (output[0] == '\0') {
+        failed = true;
+    } else {
+        cap_mcp_extract_content_text(cJSON_GetObjectItem(result, "content"), output, output_size);
         is_error = cJSON_GetObjectItem(result, "isError");
-        if (cJSON_IsBool(is_error) && cJSON_IsTrue(is_error)) {
-            snprintf(output, output_size, "Error: Tool returned application error");
-        } else {
-            snprintf(output, output_size, "(empty)");
+        failed = cJSON_IsBool(is_error) && cJSON_IsTrue(is_error);
+        if (output[0] == '\0') {
+            if (failed) {
+                snprintf(output, output_size, "Error: Tool returned application error");
+            } else {
+                snprintf(output, output_size, "(empty)");
+            }
         }
     }
 
     cJSON_Delete(result);
+
+    if (failed && strstr(output, "not found")) {
+        cap_mcp_append_gateway_hint(output, output_size);
+    }
+
     return ESP_OK;
 }
 
@@ -116,7 +179,7 @@ static esp_err_t cap_mcp_list_execute(const char *input_json,
 
     err = cap_mcp_list_remote_tools(input_json, &result);
     if (err != ESP_OK) {
-        snprintf(output, output_size, "Error: MCP request failed (%s)", esp_err_to_name(err));
+        cap_mcp_request_error_message(err, output, output_size);
         return err;
     }
 
