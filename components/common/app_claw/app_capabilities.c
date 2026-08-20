@@ -70,6 +70,9 @@
 #if CONFIG_APP_CLAW_CAP_OPENAI_TTS
 #include "cap_openai_tts.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+#include "cap_storage_guard.h"
+#endif
 #include "claw_cap.h"
 #if CONFIG_APP_CLAW_CAP_MEMORY
 #include "claw_memory.h"
@@ -738,6 +741,8 @@ static esp_err_t app_cap_prepare_groq_transcribe(const app_claw_config_t *config
         ESP_RETURN_ON_ERROR(cap_groq_transcribe_set_model(config->asr_model),
                             TAG, "Failed to set Groq transcription model");
     }
+    ESP_RETURN_ON_ERROR(cap_groq_transcribe_set_delete_audio_after_transcribe(true),
+                        TAG, "Failed to set Groq transcription cleanup flag");
 
     return ESP_OK;
 }
@@ -800,6 +805,23 @@ static esp_err_t app_cap_register_openai_tts(const app_claw_config_t *config,
     (void)config;
     (void)paths;
     return cap_openai_tts_register_group();
+}
+#endif
+
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+static esp_err_t app_cap_prepare_storage_guard(const app_claw_config_t *config,
+                                               const app_claw_storage_paths_t *paths)
+{
+    (void)paths;
+    return cap_storage_guard_set_admin(config->admin_channel, config->admin_chat_id);
+}
+
+static esp_err_t app_cap_register_storage_guard(const app_claw_config_t *config,
+                                                const app_claw_storage_paths_t *paths)
+{
+    (void)config;
+    (void)paths;
+    return cap_storage_guard_register_group();
 }
 #endif
 
@@ -888,6 +910,9 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
 #if CONFIG_APP_CLAW_CAP_OPENAI_TTS
     { "cap_openai_tts", "OpenAI TTS", "Register OpenAI text-to-speech cap", true, app_cap_prepare_openai_tts, app_cap_register_openai_tts },
 #endif
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+    { "cap_storage_guard", "Storage Guard", "Register storage guard cap", true, app_cap_prepare_storage_guard, app_cap_register_storage_guard },
+#endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", "Register router manager cap", true, NULL, app_cap_register_router_mgr },
 #endif
@@ -950,6 +975,9 @@ static const app_capability_group_info_t s_capability_group_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_OPENAI_TTS
     { "cap_openai_tts", "OpenAI TTS", false },
+#endif
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+    { "cap_storage_guard", "Storage Guard", false },
 #endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", false },

@@ -282,6 +282,7 @@ export const es: Dict = {
   memorySaveError: 'Error al guardar la memoria',
 
   fileRefresh: 'Actualizar',
+  fileStorageUsage: '{used} de {total} usados ({percent}%)',
   fileUpDir: 'Subir un nivel',
   fileNewFolder: 'Nombre de la nueva carpeta',
   fileCreateFolder: 'Crear carpeta',

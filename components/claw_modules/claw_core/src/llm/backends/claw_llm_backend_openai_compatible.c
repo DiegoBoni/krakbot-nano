@@ -451,6 +451,13 @@ static esp_err_t openai_compatible_infer_media(void *backend_ctx,
     if (err != ESP_OK) {
         return err;
     }
+    if (strncmp(prepared.mime_type, "image/", 6) != 0) {
+        *out_error_message = dup_printf(
+            "This backend only supports image analysis (got %s); configure an Anthropic "
+            "model to analyze PDF documents", prepared.mime_type);
+        claw_media_prepared_free(&prepared);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
 
     body = cJSON_CreateObject();
     messages = cJSON_CreateArray();

@@ -85,6 +85,10 @@ static const config_field_def_t CONFIG_FIELDS[] = {
     CONFIG_FIELD("skills",       enabled_lua_modules),
 
     CONFIG_FIELD("time",         time_timezone),
+
+    CONFIG_FIELD("storage",      storage_alarm_threshold_bytes),
+    CONFIG_FIELD("storage",      admin_channel),
+    CONFIG_FIELD("storage",      admin_chat_id),
 };
 
 static const size_t CONFIG_FIELD_COUNT = sizeof(CONFIG_FIELDS) / sizeof(CONFIG_FIELDS[0]);

@@ -68,6 +68,9 @@ typedef struct {
 #define APP_DEFAULT_LLM_VISIBLE_CAP_GROUPS   ""
 #define APP_DEFAULT_ENABLED_LUA_MODULES      ""
 #define APP_DEFAULT_TIME_TIMEZONE            "CST-8"
+#define APP_DEFAULT_STORAGE_ALARM_THRESHOLD_BYTES "2621440"
+#define APP_DEFAULT_ADMIN_CHANNEL            ""
+#define APP_DEFAULT_ADMIN_CHAT_ID            ""
 
 static const app_config_field_t s_fields[] = {
     APP_CONFIG_FIELD(wifi_ssid, "wifi_ssid", APP_WIFI_SSID),
@@ -112,6 +115,9 @@ static const app_config_field_t s_fields[] = {
     APP_CONFIG_FIELD(llm_visible_cap_groups, "vis_cap_groups", APP_DEFAULT_LLM_VISIBLE_CAP_GROUPS),
     APP_CONFIG_FIELD(enabled_lua_modules, "en_lua_mods", APP_DEFAULT_ENABLED_LUA_MODULES),
     APP_CONFIG_FIELD(time_timezone, "time_timezone", APP_DEFAULT_TIME_TIMEZONE),
+    APP_CONFIG_FIELD(storage_alarm_threshold_bytes, "storage_thresh", APP_DEFAULT_STORAGE_ALARM_THRESHOLD_BYTES),
+    APP_CONFIG_FIELD(admin_channel, "admin_channel", APP_DEFAULT_ADMIN_CHANNEL),
+    APP_CONFIG_FIELD(admin_chat_id, "admin_chat_id", APP_DEFAULT_ADMIN_CHAT_ID),
 };
 
 // for backward compatibility, migrate from old settings to new settings
@@ -618,6 +624,11 @@ void app_config_to_claw(const app_config_t *config, app_claw_config_t *out)
     strlcpy(out->enabled_cap_groups, config->enabled_cap_groups, sizeof(out->enabled_cap_groups));
     strlcpy(out->llm_visible_cap_groups, config->llm_visible_cap_groups, sizeof(out->llm_visible_cap_groups));
     strlcpy(out->enabled_lua_modules, config->enabled_lua_modules, sizeof(out->enabled_lua_modules));
+    strlcpy(out->storage_alarm_threshold_bytes,
+            config->storage_alarm_threshold_bytes,
+            sizeof(out->storage_alarm_threshold_bytes));
+    strlcpy(out->admin_channel, config->admin_channel, sizeof(out->admin_channel));
+    strlcpy(out->admin_chat_id, config->admin_chat_id, sizeof(out->admin_chat_id));
 }
 
 const char *app_config_get_timezone(const app_config_t *config)

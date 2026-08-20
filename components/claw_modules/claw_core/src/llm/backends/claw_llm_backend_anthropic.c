@@ -933,7 +933,8 @@ static esp_err_t anthropic_infer_media(void *backend_ctx,
     cJSON_AddItemToArray(content, text_block);
     text_block = NULL;
 
-    cJSON_AddStringToObject(image_block, "type", "image");
+    cJSON_AddStringToObject(image_block, "type",
+                            strcmp(mime, "application/pdf") == 0 ? "document" : "image");
     cJSON_AddStringToObject(source, "type", "base64");
     cJSON_AddStringToObject(source, "media_type", mime);
     cJSON_AddStringToObject(source, "data", base64_data);

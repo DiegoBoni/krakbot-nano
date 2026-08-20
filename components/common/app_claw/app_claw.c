@@ -18,6 +18,9 @@
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
 #include "cap_scheduler.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+#include "cap_storage_guard.h"
+#endif
 #if CONFIG_APP_CLAW_CAP_SYSTEM
 #include "cap_system.h"
 #endif
@@ -105,6 +108,7 @@ static const char *APP_STARTUP_EVENT_KEY = "boot_completed";
 #define APP_CLAW_LAUNCHER_OUTPUT_LEN 128
 #define APP_CLAW_UI_JOBS_OUTPUT_LEN 4096
 #define APP_CLAW_UI_JOB_STOP_WAIT_MS 50
+#define APP_CLAW_STORAGE_GUARD_CHECK_INTERVAL_MS (5 * 60 * 1000)
 
 #if CONFIG_APP_CLAW_SYSTEM_UI_ENABLE && CONFIG_APP_CLAW_CAP_LUA
 static char *app_claw_split_job_field(char **cursor)
@@ -868,6 +872,231 @@ static void app_claw_migrate_router_rules_add_audio_transcribe(const char *rules
 
     cJSON_Delete(root);
 }
+
+// Same rationale as app_claw_migrate_router_rules_add_audio_transcribe above,
+// for the "im_image_attachment_inspect" rule added alongside it: devices
+// provisioned before this rule existed in the seed never receive it, so
+// inbound image attachments only hit the generic "im_attachment_saved_reply"
+// rule (acknowledge and drop, no analysis). Inserted right before that rule
+// so it still consumes the event first, without touching any rule the user
+// may have customized since.
+static void app_claw_migrate_router_rules_add_image_inspect(const char *rules_path)
+{
+    static const char *const rule_id = "im_image_attachment_inspect";
+    static const char *const insert_before_id = "im_attachment_saved_reply";
+    static const char *const rule_json =
+        "{"
+        "\"id\":\"im_image_attachment_inspect\","
+        "\"description\":\"Analyze inbound image attachments via the vision-capable LLM and route the description to the agent.\","
+        "\"enabled\":true,"
+        "\"consume_on_match\":true,"
+        "\"ack\":\"{{event.source_channel}} image attachment sent for analysis\","
+        "\"match\":{\"event_type\":\"attachment_saved\",\"content_type\":\"image\"},"
+        "\"actions\":[{\"type\":\"call_cap\",\"cap\":\"inspect_image\",\"input\":{"
+        "\"path\":\"{{event.payload.saved_path}}\","
+        "\"prompt\":\"Describí brevemente esta imagen. Si algo de lo que se ve parece valioso para recordar "
+        "sobre el usuario o el contexto (una preferencia, un documento, un lugar, un objeto importante), "
+        "mencionalo explícitamente para poder guardarlo en la memoria.\","
+        "\"chat_id\":\"{{event.chat_id}}\","
+        "\"channel\":\"{{event.source_channel}}\","
+        "\"sender_id\":\"{{event.sender_id}}\","
+        "\"message_id\":\"{{event.message_id}}\","
+        "\"delete_after\":true"
+        "}}]"
+        "}";
+    FILE *file = NULL;
+    long size = 0;
+    char *buf = NULL;
+    cJSON *root = NULL;
+    cJSON *rule = NULL;
+    cJSON *new_rule = NULL;
+    int insert_at = -1;
+    int index = 0;
+
+    if (!rules_path || !rules_path[0]) {
+        return;
+    }
+
+    file = fopen(rules_path, "rb");
+    if (!file) {
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 ||
+            fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return;
+    }
+    buf = calloc(1, (size_t)size + 1);
+    if (!buf) {
+        fclose(file);
+        return;
+    }
+    if (fread(buf, 1, (size_t)size, file) != (size_t)size) {
+        fclose(file);
+        free(buf);
+        return;
+    }
+    fclose(file);
+
+    root = cJSON_Parse(buf);
+    free(buf);
+    if (!cJSON_IsArray(root)) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    cJSON_ArrayForEach(rule, root) {
+        cJSON *id = cJSON_GetObjectItem(rule, "id");
+
+        if (cJSON_IsString(id) && strcmp(id->valuestring, rule_id) == 0) {
+            cJSON_Delete(root);
+            return;
+        }
+        if (cJSON_IsString(id) && insert_at < 0 && strcmp(id->valuestring, insert_before_id) == 0) {
+            insert_at = index;
+        }
+        index++;
+    }
+
+    new_rule = cJSON_Parse(rule_json);
+    if (!new_rule) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    if (insert_at >= 0) {
+        cJSON_InsertItemInArray(root, insert_at, new_rule);
+    } else {
+        cJSON_InsertItemInArray(root, 0, new_rule);
+    }
+
+    {
+        char *out_json = cJSON_PrintUnformatted(root);
+
+        if (out_json) {
+            file = fopen(rules_path, "wb");
+            if (file) {
+                fwrite(out_json, 1, strlen(out_json), file);
+                fclose(file);
+                ESP_LOGI(TAG, "Added missing router rule '%s'", rule_id);
+            }
+            free(out_json);
+        }
+    }
+
+    cJSON_Delete(root);
+}
+
+// Same rationale as the two migrations above, for the
+// "im_document_attachment_inspect" rule: devices provisioned before it
+// existed in the seed never receive it, so inbound document attachments
+// (PDFs, text files, anything non-audio/non-image) only hit the generic
+// "im_attachment_saved_reply" rule (acknowledge and drop, no processing).
+// Inserted right before that rule so it still consumes the event first,
+// without touching any rule the user may have customized since.
+static void app_claw_migrate_router_rules_add_document_inspect(const char *rules_path)
+{
+    static const char *const rule_id = "im_document_attachment_inspect";
+    static const char *const insert_before_id = "im_attachment_saved_reply";
+    static const char *const rule_json =
+        "{"
+        "\"id\":\"im_document_attachment_inspect\","
+        "\"description\":\"Process inbound document attachments (PDF summary, text passthrough, or an honest unsupported notice) and route the result to the agent.\","
+        "\"enabled\":true,"
+        "\"consume_on_match\":true,"
+        "\"ack\":\"{{event.source_channel}} document attachment sent for analysis\","
+        "\"match\":{\"event_type\":\"attachment_saved\",\"content_type\":\"file\"},"
+        "\"actions\":[{\"type\":\"call_cap\",\"cap\":\"inspect_document\",\"input\":{"
+        "\"path\":\"{{event.payload.saved_path}}\","
+        "\"original_filename\":\"{{event.payload.original_filename}}\","
+        "\"chat_id\":\"{{event.chat_id}}\","
+        "\"channel\":\"{{event.source_channel}}\","
+        "\"sender_id\":\"{{event.sender_id}}\","
+        "\"message_id\":\"{{event.message_id}}\""
+        "}}]"
+        "}";
+    FILE *file = NULL;
+    long size = 0;
+    char *buf = NULL;
+    cJSON *root = NULL;
+    cJSON *rule = NULL;
+    cJSON *new_rule = NULL;
+    int insert_at = -1;
+    int index = 0;
+
+    if (!rules_path || !rules_path[0]) {
+        return;
+    }
+
+    file = fopen(rules_path, "rb");
+    if (!file) {
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 ||
+            fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return;
+    }
+    buf = calloc(1, (size_t)size + 1);
+    if (!buf) {
+        fclose(file);
+        return;
+    }
+    if (fread(buf, 1, (size_t)size, file) != (size_t)size) {
+        fclose(file);
+        free(buf);
+        return;
+    }
+    fclose(file);
+
+    root = cJSON_Parse(buf);
+    free(buf);
+    if (!cJSON_IsArray(root)) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    cJSON_ArrayForEach(rule, root) {
+        cJSON *id = cJSON_GetObjectItem(rule, "id");
+
+        if (cJSON_IsString(id) && strcmp(id->valuestring, rule_id) == 0) {
+            cJSON_Delete(root);
+            return;
+        }
+        if (cJSON_IsString(id) && insert_at < 0 && strcmp(id->valuestring, insert_before_id) == 0) {
+            insert_at = index;
+        }
+        index++;
+    }
+
+    new_rule = cJSON_Parse(rule_json);
+    if (!new_rule) {
+        cJSON_Delete(root);
+        return;
+    }
+
+    if (insert_at >= 0) {
+        cJSON_InsertItemInArray(root, insert_at, new_rule);
+    } else {
+        cJSON_InsertItemInArray(root, 0, new_rule);
+    }
+
+    {
+        char *out_json = cJSON_PrintUnformatted(root);
+
+        if (out_json) {
+            file = fopen(rules_path, "wb");
+            if (file) {
+                fwrite(out_json, 1, strlen(out_json), file);
+                fclose(file);
+                ESP_LOGI(TAG, "Added missing router rule '%s'", rule_id);
+            }
+            free(out_json);
+        }
+    }
+
+    cJSON_Delete(root);
+}
 #endif
 
 // Resolve the storage paths threaded through the capability framework from the
@@ -930,6 +1159,8 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
 #if CONFIG_APP_CLAW_CAP_EVENT_ROUTER
     app_claw_migrate_router_rules(paths.router_rules_path);
     app_claw_migrate_router_rules_add_audio_transcribe(paths.router_rules_path);
+    app_claw_migrate_router_rules_add_image_inspect(paths.router_rules_path);
+    app_claw_migrate_router_rules_add_document_inspect(paths.router_rules_path);
     router_config.default_route_messages_to_agent = true;
     router_config.rules_path = paths.router_rules_path;
 #endif
@@ -1041,6 +1272,15 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
 #endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
     ESP_RETURN_ON_ERROR(cap_scheduler_start(), TAG, "Failed to start scheduler");
+#endif
+#if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
+    ESP_RETURN_ON_ERROR(cap_storage_guard_start(&(cap_storage_guard_config_t) {
+                            .threshold_bytes = (uint32_t)strtoul(config->storage_alarm_threshold_bytes, NULL, 10),
+                            .check_interval_ms = APP_CLAW_STORAGE_GUARD_CHECK_INTERVAL_MS,
+                            .attachment_root_dir = paths.im_attachment_root,
+                            .tts_cache_root = paths.tts_cache_root,
+                        }),
+                        TAG, "Failed to start storage guard");
 #endif
 
 #if CONFIG_APP_CLAW_CAP_SYSTEM

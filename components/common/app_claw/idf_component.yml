@@ -99,6 +99,11 @@ dependencies:
       - if: $CONFIG{APP_CLAW_CAP_OPENAI_TTS} == True
     path: ../../claw_capabilities/cap_openai_tts
 
+  cap_storage_guard:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_STORAGE_GUARD} == True
+    path: ../../claw_capabilities/cap_storage_guard
+
   claw_cap:
     path: ../../claw_modules/claw_cap
 

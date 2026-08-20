@@ -775,7 +775,7 @@ static esp_err_t cap_im_tg_save_attachment(const char *chat_id,
         free(remote_path);
         ESP_LOGW(TAG, "Telegram attachment payload build failed: message=%s path=%s",
                  message_id, saved_path);
-        ESP_LOGI(TAG, "Saved Telegram %s to %s (%u bytes)", attachment_kind, saved_path, (unsigned int)bytes);
+        cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, false);
         return ESP_OK;
     }
 
@@ -793,6 +793,7 @@ static esp_err_t cap_im_tg_save_attachment(const char *chat_id,
                  saved_path,
                  esp_err_to_name(err));
     }
+    cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, err == ESP_OK);
 
     ESP_LOGI(TAG, "Saved Telegram %s to %s (%u bytes)", attachment_kind, saved_path, (unsigned int)bytes);
     return ESP_OK;

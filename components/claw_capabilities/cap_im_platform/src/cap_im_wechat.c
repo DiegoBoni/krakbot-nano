@@ -1215,6 +1215,7 @@ static esp_err_t cap_im_wechat_save_attachment_buffer(const char *chat_id,
         .saved_at_ms = cap_im_wechat_now_ms(),
     });
     if (!payload_json) {
+        cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, false);
         return ESP_ERR_NO_MEM;
     }
 
@@ -1224,6 +1225,7 @@ static esp_err_t cap_im_wechat_save_attachment_buffer(const char *chat_id,
                                                  content_type,
                                                  payload_json);
     free(payload_json);
+    cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, err == ESP_OK);
     return err;
 }
 

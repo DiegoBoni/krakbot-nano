@@ -276,6 +276,7 @@ export const en = {
   memorySaveError: 'Failed to save memory',
 
   fileRefresh: 'Refresh',
+  fileStorageUsage: '{used} of {total} used ({percent}%)',
   fileUpDir: 'Up One Level',
   fileNewFolder: 'New folder name',
   fileCreateFolder: 'Create Folder',

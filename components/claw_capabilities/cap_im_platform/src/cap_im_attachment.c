@@ -494,3 +494,27 @@ char *cap_im_attachment_build_payload_json(
     cJSON_Delete(payload);
     return payload_json;
 }
+
+void cap_im_attachment_cleanup_if_unconsumed(const char *log_tag,
+                                             const char *content_type,
+                                             const char *saved_path,
+                                             bool event_published)
+{
+    /* "audio" and "image"/"file" are consumed by cap_groq_transcribe and
+     * cap_llm_inspect respectively (via the im_audio_attachment_transcribe /
+     * im_image_attachment_inspect / im_document_attachment_inspect router
+     * rules) - all three delete the file themselves once done with it. */
+    bool has_consumer = event_published && content_type &&
+                        (strcmp(content_type, "audio") == 0 ||
+                         strcmp(content_type, "image") == 0 ||
+                         strcmp(content_type, "file") == 0);
+
+    if (!saved_path || !saved_path[0] || has_consumer) {
+        return;
+    }
+
+    if (remove(saved_path) != 0 && errno != ENOENT) {
+        ESP_LOGW(log_tag ? log_tag : "cap_im_attachment",
+                "attachment cleanup failed: path=%s errno=%d", saved_path, errno);
+    }
+}

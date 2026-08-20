@@ -248,7 +248,12 @@ export async function fetchLuaModules() {
 }
 
 export async function fetchFileList(path: string, signal?: AbortSignal) {
-  const data = await request<{ path: string; entries: FileEntry[] }>(
+  const data = await request<{
+    path: string;
+    entries: FileEntry[];
+    storage_total_bytes?: number;
+    storage_free_bytes?: number;
+  }>(
     '/api/files?path=' + encodeURIComponent(path),
     { signal },
     'Failed to load file list',

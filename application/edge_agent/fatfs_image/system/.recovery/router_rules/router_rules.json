@@ -134,6 +134,57 @@
     ]
   },
   {
+    "id": "im_image_attachment_inspect",
+    "description": "Analyze inbound image attachments via the vision-capable LLM and route the description to the agent.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} image attachment sent for analysis",
+    "match": {
+      "event_type": "attachment_saved",
+      "content_type": "image"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "inspect_image",
+        "input": {
+          "path": "{{event.payload.saved_path}}",
+          "prompt": "Describí brevemente esta imagen. Si algo de lo que se ve parece valioso para recordar sobre el usuario o el contexto (una preferencia, un documento, un lugar, un objeto importante), mencionalo explícitamente para poder guardarlo en la memoria.",
+          "chat_id": "{{event.chat_id}}",
+          "channel": "{{event.source_channel}}",
+          "sender_id": "{{event.sender_id}}",
+          "message_id": "{{event.message_id}}",
+          "delete_after": true
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_document_attachment_inspect",
+    "description": "Process inbound document attachments (PDF summary, text passthrough, or an honest unsupported notice) and route the result to the agent.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} document attachment sent for analysis",
+    "match": {
+      "event_type": "attachment_saved",
+      "content_type": "file"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "inspect_document",
+        "input": {
+          "path": "{{event.payload.saved_path}}",
+          "original_filename": "{{event.payload.original_filename}}",
+          "chat_id": "{{event.chat_id}}",
+          "channel": "{{event.source_channel}}",
+          "sender_id": "{{event.sender_id}}",
+          "message_id": "{{event.message_id}}"
+        }
+      }
+    ]
+  },
+  {
     "id": "im_attachment_saved_reply",
     "description": "Reply when an IM attachment is saved.",
     "enabled": true,

@@ -1630,6 +1630,7 @@ static esp_err_t cap_im_feishu_save_attachment(const char *chat_id,
     });
     if (!payload_json) {
         ESP_LOGW(TAG, "Feishu attachment payload build failed message=%s path=%s", message_id, saved_path);
+        cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, false);
         return ESP_OK;
     }
 
@@ -1639,6 +1640,7 @@ static esp_err_t cap_im_feishu_save_attachment(const char *chat_id,
                                                  content_type,
                                                  payload_json);
     free(payload_json);
+    cap_im_attachment_cleanup_if_unconsumed(TAG, content_type, saved_path, err == ESP_OK);
     return err;
 }
 

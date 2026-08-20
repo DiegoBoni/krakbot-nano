@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "esp_vfs_fat.h"
+
 static int mkdir_parents(char *path, mode_t mode)
 {
     if (!path || path[0] != '/') {
@@ -68,6 +70,15 @@ static esp_err_t files_list_handler(httpd_req_t *req)
 
     http_server_json_add_string(root, "path", relative_path);
     cJSON_AddItemToObject(root, "entries", entries);
+
+    {
+        uint64_t total = 0;
+        uint64_t free_bytes = 0;
+        if (esp_vfs_fat_info(http_server_ctx()->storage_base_path, &total, &free_bytes) == ESP_OK) {
+            cJSON_AddNumberToObject(root, "storage_total_bytes", (double)total);
+            cJSON_AddNumberToObject(root, "storage_free_bytes", (double)free_bytes);
+        }
+    }
 
     struct dirent *entry = NULL;
     while ((entry = readdir(dir)) != NULL) {

@@ -152,10 +152,12 @@ menu "App Claw Config"
 
         config APP_CLAW_CAP_LLM_INSPECT
             bool "Enable LLM inspect capability"
+            select APP_CLAW_CAP_EVENT_ROUTER
             default y
             help
                 Enable the LLM inspect capability and keep app_claw's direct dependency
-                on cap_llm_inspect.
+                on cap_llm_inspect. Also republishes image analysis as an inbound chat
+                message when a router rule routes a saved image attachment here.
 
         config APP_CLAW_CAP_HTTP_REQUEST
             bool "Enable HTTP request capability"
@@ -189,6 +191,16 @@ menu "App Claw Config"
                 direct dependency on cap_openai_tts. Used to synthesize voice
                 replies (e.g. the Telegram "Listen" button) via the OpenAI TTS
                 API.
+
+        config APP_CLAW_CAP_STORAGE_GUARD
+            bool "Enable storage guard capability"
+            default y
+            help
+                Enable the storage guard capability and keep app_claw's direct
+                dependency on cap_storage_guard. Watches DATA partition usage,
+                alerts the configured admin chat once it crosses a threshold,
+                and exposes storage_status/storage_cleanup so the agent can
+                free up saved IM attachments and TTS cache on request.
 
         config APP_CLAW_CAP_ROUTER_MGR
             bool "Enable router manager capability"

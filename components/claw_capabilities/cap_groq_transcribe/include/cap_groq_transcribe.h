@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <stdbool.h>
+
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -33,6 +35,16 @@ esp_err_t cap_groq_transcribe_set_api_key(const char *api_key);
  *              the built-in default model is used.
  */
 esp_err_t cap_groq_transcribe_set_model(const char *model);
+
+/**
+ * @brief Control whether the source audio file is deleted after a
+ *        transcription attempt (success or failure).
+ *
+ * Inbound voice/audio attachments are only useful until they are
+ * transcribed; leaving them on the writable DATA partition after that
+ * accumulates until the partition fills up. Enabled by default.
+ */
+esp_err_t cap_groq_transcribe_set_delete_audio_after_transcribe(bool enable);
 
 #ifdef __cplusplus
 }

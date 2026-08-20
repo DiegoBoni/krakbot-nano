@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "src/cap_storage_guard.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        claw_cap
+        claw_core
+        fatfs
+)

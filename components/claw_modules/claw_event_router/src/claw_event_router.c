@@ -1691,6 +1691,7 @@ static esp_err_t claw_event_router_execute_cap_action(
     call_ctx.chat_id = event->chat_id;
     call_ctx.target_channel = event->target_channel[0] ? event->target_channel : event->source_channel;
     call_ctx.target_chat_id = event->target_endpoint[0] ? event->target_endpoint : event->chat_id;
+    call_ctx.core = claw_agent_mgr_get_root_core();
     err = claw_event_router_prepare_session_id(event, session_id, sizeof(session_id), &session_id_len);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to build cap action session id: %s", esp_err_to_name(err));
@@ -1919,6 +1920,7 @@ static esp_err_t claw_event_router_execute_send_message_action(
     call_ctx.target_chat_id = chat_id;
     call_ctx.source_cap = "claw_event_router";
     call_ctx.caller = CLAW_CAP_CALLER_SYSTEM;
+    call_ctx.core = claw_agent_mgr_get_root_core();
     err = claw_cap_call(cap_name, payload, &call_ctx, output, sizeof(output));
     ESP_LOGI(TAG,
              "send_message cap=%s err=%s output=%s",

@@ -80,6 +80,8 @@ const initialEditor: EditorState = {
 export const FilesPage: Component = () => {
   const [currentPath, setCurrentPath] = createSignal('/');
   const [entries, setEntries] = createSignal<FileEntry[]>([]);
+  const [storageTotalBytes, setStorageTotalBytes] = createSignal<number | null>(null);
+  const [storageFreeBytes, setStorageFreeBytes] = createSignal<number | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [devMode, setDevMode] = createSignal(false);
@@ -111,6 +113,8 @@ export const FilesPage: Component = () => {
           .slice()
           .sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name)),
       );
+      setStorageTotalBytes(typeof data.storage_total_bytes === 'number' ? data.storage_total_bytes : null);
+      setStorageFreeBytes(typeof data.storage_free_bytes === 'number' ? data.storage_free_bytes : null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -331,6 +335,19 @@ export const FilesPage: Component = () => {
 
   const goUp = () => setCurrentPath(parentOf(currentPath()));
 
+  const storageUsageLabel = () => {
+    const total = storageTotalBytes();
+    const free = storageFreeBytes();
+    if (total === null || free === null || total <= 0) return null;
+    const used = total - free;
+    const percent = Math.round((used / total) * 100);
+    return tf('fileStorageUsage', {
+      used: humanSize(used),
+      total: humanSize(total),
+      percent: String(percent),
+    });
+  };
+
   return (
     <TabShell>
       <PageHeader
@@ -358,6 +375,11 @@ export const FilesPage: Component = () => {
         <code class="inline-flex items-center h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] text-[0.82rem] font-mono text-[var(--color-text-secondary)]">
           {currentPath()}
         </code>
+        <Show when={storageUsageLabel()}>
+          <span class="inline-flex items-center h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] text-[0.82rem] text-[var(--color-text-secondary)]">
+            {storageUsageLabel()}
+          </span>
+        </Show>
       </div>
 
       <Show when={devMode()}>

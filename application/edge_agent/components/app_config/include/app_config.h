@@ -63,6 +63,9 @@ typedef struct {
     char llm_visible_cap_groups[APP_CONFIG_STR_LEN];
     char enabled_lua_modules[APP_CONFIG_STR_LEN];
     char time_timezone[APP_CONFIG_TIMEZONE_LEN];
+    char storage_alarm_threshold_bytes[16];
+    char admin_channel[32];
+    char admin_chat_id[APP_CONFIG_STR_LEN];
 } app_config_t;
 
 esp_err_t app_config_init(void);

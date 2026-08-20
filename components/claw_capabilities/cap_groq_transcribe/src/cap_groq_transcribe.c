@@ -56,6 +56,7 @@ typedef struct {
 typedef struct {
     char api_key[CAP_GROQ_API_KEY_LEN];
     char model[CAP_GROQ_MODEL_LEN];
+    bool delete_audio_after_transcribe;
 } cap_groq_state_t;
 
 static EXT_RAM_BSS_ATTR cap_groq_state_t s_groq;
@@ -68,6 +69,7 @@ static void cap_groq_init_defaults(void)
     }
 
     strlcpy(s_groq.model, CAP_GROQ_DEFAULT_MODEL, sizeof(s_groq.model));
+    s_groq.delete_audio_after_transcribe = true;
     s_groq_initialized = true;
 }
 
@@ -468,6 +470,9 @@ static esp_err_t cap_groq_transcribe_execute(const char *input_json,
     cap_groq_send_waiting_message(channel, chat_id);
 
     err = cap_groq_transcribe_file(saved_path, &text);
+    if (s_groq.delete_audio_after_transcribe) {
+        remove(saved_path);
+    }
     if (err != ESP_OK || !text) {
         cJSON_Delete(root);
         snprintf(output, output_size, "Error: transcription failed (%s)", esp_err_to_name(err));
@@ -547,5 +552,13 @@ esp_err_t cap_groq_transcribe_set_model(const char *model)
     }
 
     strlcpy(s_groq.model, model, sizeof(s_groq.model));
+    return ESP_OK;
+}
+
+esp_err_t cap_groq_transcribe_set_delete_audio_after_transcribe(bool enable)
+{
+    cap_groq_init_defaults();
+
+    s_groq.delete_audio_after_transcribe = enable;
     return ESP_OK;
 }

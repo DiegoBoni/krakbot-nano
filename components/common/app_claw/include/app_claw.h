@@ -63,6 +63,9 @@ typedef struct {
     char enabled_cap_groups[APP_CLAW_STR_LEN];
     char llm_visible_cap_groups[APP_CLAW_STR_LEN];
     char enabled_lua_modules[APP_CLAW_STR_LEN];
+    char storage_alarm_threshold_bytes[APP_CLAW_TIMEOUT_LEN];
+    char admin_channel[APP_CLAW_SHORT_STR_LEN];
+    char admin_chat_id[APP_CLAW_STR_LEN];
 } app_claw_config_t;
 
 typedef esp_err_t (*app_claw_save_config_fn)(const app_claw_config_t *config,

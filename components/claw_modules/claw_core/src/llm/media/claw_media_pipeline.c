@@ -41,6 +41,10 @@ static char *dup_printf(const char *fmt, ...)
     return buf;
 }
 
+// Despite the name, this now covers every locally-prepared media type the
+// pipeline knows how to base64-encode and hand to a backend - images and
+// PDF documents alike. Backends decide per-mime whether they can actually
+// use the result (e.g. only Anthropic accepts application/pdf today).
 static const char *image_mime_from_path(const char *path)
 {
     const char *dot;
@@ -65,6 +69,9 @@ static const char *image_mime_from_path(const char *path)
     }
     if (strcasecmp(dot, ".webp") == 0) {
         return "image/webp";
+    }
+    if (strcasecmp(dot, ".pdf") == 0) {
+        return "application/pdf";
     }
 
     return NULL;
@@ -97,7 +104,7 @@ static esp_err_t prepare_local_path_asset(const claw_media_asset_t *asset,
 
     mime = asset->mime_type ? asset->mime_type : image_mime_from_path(asset->path);
     if (!mime) {
-        *out_error_message = dup_printf("Only local jpg/jpeg/png/gif/webp files are supported");
+        *out_error_message = dup_printf("Only local jpg/jpeg/png/gif/webp/pdf files are supported");
         return ESP_ERR_NOT_SUPPORTED;
     }
     if (stat(asset->path, &st) != 0) {

@@ -268,6 +268,7 @@ export const zhCn: Dict = {
   memorySaveError: '保存记忆失败',
 
   fileRefresh: '刷新',
+  fileStorageUsage: '已使用 {used}，共 {total}（{percent}%）',
   fileUpDir: '返回上级',
   fileNewFolder: '新文件夹名称',
   fileCreateFolder: '创建文件夹',
