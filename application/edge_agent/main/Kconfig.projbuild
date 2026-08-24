@@ -55,20 +55,6 @@ menu "Default Wi-Fi Settings"
 
 endmenu
 
-menu "Local HTTP Config API"
-
-    config APP_HTTP_ADMIN_PASSWORD
-        string "Local config/API HTTP Basic Auth password"
-        default "KrakBotNano2026"
-        help
-            HTTP Basic Auth password (username: admin) required to reach
-            the local config/status/files API endpoints, which expose
-            secrets such as the Wi-Fi password and LLM/IM API keys. Must
-            be 8-63 characters; unlike ap_password this can never be
-            empty. Change this per-device via the web config UI.
-
-endmenu
-
 menu "Default Search Settings"
 
     config APP_SEARCH_HTTP_ALLOWLIST

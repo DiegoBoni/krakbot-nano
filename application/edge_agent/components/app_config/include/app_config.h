@@ -18,7 +18,6 @@ extern "C" {
 #define APP_WIFI_SSID             CONFIG_APP_WIFI_SSID
 #define APP_WIFI_PASSWORD         CONFIG_APP_WIFI_PASSWORD
 #define APP_SEARCH_HTTP_ALLOWLIST CONFIG_APP_SEARCH_HTTP_ALLOWLIST
-#define APP_ADMIN_PASSWORD        CONFIG_APP_HTTP_ADMIN_PASSWORD
 
 typedef struct {
     char wifi_ssid[APP_CONFIG_STR_LEN];
@@ -26,7 +25,6 @@ typedef struct {
     char ap_ssid[APP_CONFIG_STR_LEN];
     char ap_password[APP_CONFIG_STR_LEN];
     char ap_behavior[16];
-    char admin_password[APP_CONFIG_STR_LEN];
     char llm_api_key[APP_CONFIG_STR_LEN];
     char llm_backend_type[32];
     char llm_model[64];

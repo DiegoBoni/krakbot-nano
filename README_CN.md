@@ -57,7 +57,7 @@
 - 💰 **`/cost` 指令** — 在任意 IM 渠道输入 `/cost`，即可查看自启动以来的 LLM Token 用量及预估美元花费。
 - 🇪🇸 **西班牙语界面** — 本地设备设置界面新增完整西班牙语翻译，与现有的中英文并列。
 - 🛠️ **N16R8 开发板适配 + PlatformIO/pioarduino 构建** — `application/edge_agent/platformio.ini` 支持通过 VS Code 的 pioarduino 扩展针对 ESP32-S3 N16R8 DevKitC-1（16MB Flash，八线 PSRAM）进行构建、烧录与串口监视，作为纯 `idf.py` 流程之外的另一种选择。
-- 🔐 **默认安全加固** — 本地配置/状态/文件 HTTP API 现在需要 HTTP Basic Auth（用户名 `admin` + 密码）验证；配网 Wi-Fi AP 也不再允许开放无密码，始终回退为 WPA2-PSK 密码。**两者出厂默认均为 `KrakBotNano2026`——由于该默认值已写入源码仓库，请务必在首次启动时通过网页配置向导修改。**
+- 🔐 **Wi-Fi AP 默认加固** — 配网 Wi-Fi AP 不再允许开放无密码，始终回退为 WPA2-PSK 密码（出厂默认 `KrakBotNano2026`——由于该默认值已写入源码仓库，请务必在首次启动时通过网页配置向导修改）。本地配置/状态/文件 HTTP API 不再单独要求登录：其可达性由所在网络（同一个 Wi-Fi 密码）而非第二重凭据来控制。
 
 ## 🌟核心特性
 

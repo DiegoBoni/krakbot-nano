@@ -78,7 +78,6 @@ static const app_config_field_t s_fields[] = {
     APP_CONFIG_FIELD(ap_ssid, "ap_ssid", ""),
     APP_CONFIG_FIELD(ap_password, "ap_password", ""),
     APP_CONFIG_FIELD(ap_behavior, "ap_behavior", "keep"),
-    APP_CONFIG_FIELD(admin_password, "admin_password", APP_ADMIN_PASSWORD),
     APP_CONFIG_FIELD(llm_api_key, "llm_api_key", APP_DEFAULT_LLM_API_KEY),
     APP_CONFIG_FIELD(llm_backend_type, "llm_backend", APP_DEFAULT_LLM_BACKEND_TYPE),
     APP_CONFIG_FIELD(llm_model, "llm_model", APP_DEFAULT_LLM_MODEL),
@@ -562,15 +561,6 @@ esp_err_t app_config_validate_wifi(const app_config_t *config, const char **mess
             *message = "ap_behavior must be keep or close_on_sta";
         }
         return ESP_ERR_INVALID_ARG;
-    }
-    {
-        size_t admin_password_len = strlen(config->admin_password);
-        if (admin_password_len < 8 || admin_password_len > 63) {
-            if (message) {
-                *message = "admin_password must be 8-63 characters (required, protects the config API)";
-            }
-            return ESP_ERR_INVALID_ARG;
-        }
     }
     return ESP_OK;
 }

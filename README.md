@@ -57,7 +57,7 @@ On top of everything ESP-Claw provides, this fork adds:
 - 💰 **`/cost` command** — type `/cost` in any IM channel to see cumulative LLM token usage and an estimated USD cost since boot.
 - 🇪🇸 **Spanish UI** — full Spanish translation of the local device settings UI, alongside the existing English and Chinese.
 - 🛠️ **N16R8 board target + PlatformIO/pioarduino build** — `application/edge_agent/platformio.ini` builds, flashes, and monitors against the ESP32-S3 N16R8 DevKitC-1 (16 MB flash, octal PSRAM) through the pioarduino PlatformIO extension, as an alternative to a bare `idf.py` workflow.
-- 🔐 **Hardened defaults** — the local config/status/files HTTP API now requires HTTP Basic Auth (`admin` + password), and the provisioning Wi-Fi AP is never left open (it always falls back to a WPA2-PSK password). **Both default to `KrakBotNano2026` out of the box — change them from the web setup wizard on first boot, since this default is public in source control.**
+- 🔐 **Hardened Wi-Fi AP default** — the provisioning Wi-Fi AP is never left open; it always falls back to a WPA2-PSK password (`KrakBotNano2026` out of the box — change it from the web setup wizard on first boot, since this default is public in source control). The local config/status/files HTTP API has no separate login: reachability is gated by network membership (the same Wi-Fi password) rather than a second credential.
 
 ## 🌟 Key Features
 
