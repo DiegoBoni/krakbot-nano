@@ -187,6 +187,7 @@ static esp_err_t main_get_wifi_status(http_server_wifi_status_t *status)
     status->ap_ssid = wifi_status.ap_ssid;
     status->ap_ip = wifi_status.ap_ip;
     status->wifi_mode = wifi_status.mode;
+    status->mdns_hostname = wifi_status.mdns_hostname;
     return ESP_OK;
 }
 

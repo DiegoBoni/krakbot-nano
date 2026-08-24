@@ -27,6 +27,7 @@ static esp_err_t status_handler(httpd_req_t *req)
     http_server_json_add_string(root, "ap_ssid", status.ap_ssid);
     http_server_json_add_string(root, "ap_ip", status.ap_ip);
     http_server_json_add_string(root, "wifi_mode", status.wifi_mode);
+    http_server_json_add_string(root, "mdns_hostname", status.mdns_hostname);
     return http_server_send_json_response(req, root);
 }
 

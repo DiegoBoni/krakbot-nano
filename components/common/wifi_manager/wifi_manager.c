@@ -5,6 +5,7 @@
  */
 #include "wifi_manager.h"
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "esp_attr.h"
+#include "mdns.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "sdkconfig.h"
@@ -64,6 +66,7 @@ static bool s_ap_active;
 static bool s_sta_configured;
 static char s_ip_addr[16] = "0.0.0.0";
 static char s_ap_ip[16] = "192.168.4.1";
+static EXT_RAM_BSS_ATTR char s_mdns_hostname[40];
 static EXT_RAM_BSS_ATTR char s_ap_ssid[33];
 static EXT_RAM_BSS_ATTR char s_sta_ssid[33];
 static EXT_RAM_BSS_ATTR char s_sta_password[65];
@@ -159,13 +162,10 @@ static bool wifi_manager_close_on_sta(void)
     return s_config.ap_behavior && strcmp(s_config.ap_behavior, "close_on_sta") == 0;
 }
 
-static void compose_ap_ssid(void)
+/* Last 3 bytes of the device's SoftAP MAC, used to make the AP SSID and the
+ * mDNS hostname unique per device while staying stable across reboots. */
+static void read_device_mac_suffix(uint8_t out_suffix[3])
 {
-    if (s_config.ap_ssid && s_config.ap_ssid[0] != '\0') {
-        strlcpy(s_ap_ssid, s_config.ap_ssid, sizeof(s_ap_ssid));
-        ESP_LOGI(TAG, "Custom AP SSID: %s", s_ap_ssid);
-        return;
-    }
     uint8_t mac[6] = {0};
 #ifdef CONFIG_IDF_TARGET_ESP32P4
     size_t mac_len = esp_hosted_iface_mac_addr_len_get(ESP_MAC_WIFI_SOFTAP);
@@ -178,9 +178,53 @@ static void compose_ap_ssid(void)
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
     }
 #endif
+    out_suffix[0] = mac[3];
+    out_suffix[1] = mac[4];
+    out_suffix[2] = mac[5];
+}
+
+static void compose_ap_ssid(void)
+{
+    if (s_config.ap_ssid && s_config.ap_ssid[0] != '\0') {
+        strlcpy(s_ap_ssid, s_config.ap_ssid, sizeof(s_ap_ssid));
+        ESP_LOGI(TAG, "Custom AP SSID: %s", s_ap_ssid);
+        return;
+    }
+    uint8_t suffix[3];
+    read_device_mac_suffix(suffix);
     snprintf(s_ap_ssid, sizeof(s_ap_ssid), "%s-%02X%02X%02X",
-             wifi_manager_ap_ssid_prefix(), mac[3], mac[4], mac[5]);
+             wifi_manager_ap_ssid_prefix(), suffix[0], suffix[1], suffix[2]);
     ESP_LOGI(TAG, "Provisioning AP SSID: %s", s_ap_ssid);
+}
+
+/* Advertise the device as <prefix>-<mac suffix>.local over mDNS, so it can be
+ * reached by name once it joins a Wi-Fi network instead of hunting for its
+ * DHCP-assigned IP. The suffix matches the AP SSID's, so a device is easy to
+ * recognize across both names. Best-effort: a failure here should not block
+ * Wi-Fi bring-up. */
+static void start_mdns(void)
+{
+    char prefix[33];
+    strlcpy(prefix, wifi_manager_ap_ssid_prefix(), sizeof(prefix));
+    for (char *p = prefix; *p; p++) {
+        *p = (char)tolower((unsigned char)*p);
+    }
+
+    uint8_t suffix[3];
+    read_device_mac_suffix(suffix);
+    snprintf(s_mdns_hostname, sizeof(s_mdns_hostname), "%s-%02x%02x%02x",
+             prefix, suffix[0], suffix[1], suffix[2]);
+
+    esp_err_t err = mdns_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS init failed: %s", esp_err_to_name(err));
+        s_mdns_hostname[0] = '\0';
+        return;
+    }
+    mdns_hostname_set(s_mdns_hostname);
+    mdns_instance_name_set("KrakBot Nano");
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    ESP_LOGI(TAG, "mDNS hostname: %s.local", s_mdns_hostname);
 }
 
 static void apply_ap_config(void)
@@ -424,6 +468,7 @@ esp_err_t wifi_manager_init(void)
     memset(&s_config, 0, sizeof(s_config));
     s_wifi_started = false;
     compose_ap_ssid();
+    start_mdns();
     return ESP_OK;
 }
 
@@ -494,6 +539,7 @@ void wifi_manager_get_status(wifi_manager_status_t *status)
     status->ap_ip = s_ap_ip;
     status->ap_ssid = s_ap_ssid;
     status->mode = wifi_manager_mode_string(s_mode);
+    status->mdns_hostname = s_mdns_hostname;
 }
 
 esp_netif_t *wifi_manager_get_ap_netif(void)

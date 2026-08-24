@@ -21,6 +21,7 @@ typedef struct {
     const char *ap_ssid;
     const char *ap_ip;
     const char *wifi_mode;
+    const char *mdns_hostname;
 } http_server_wifi_status_t;
 
 typedef struct {

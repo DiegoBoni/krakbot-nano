@@ -37,6 +37,7 @@ typedef struct {
     const char *ap_ip;
     const char *ap_ssid;
     const char *mode;
+    const char *mdns_hostname;
 } wifi_manager_status_t;
 
 typedef struct {
