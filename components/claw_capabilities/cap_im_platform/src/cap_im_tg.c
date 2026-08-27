@@ -37,6 +37,8 @@ static const char *TAG = "cap_im_tg";
 #define CAP_IM_TG_MAX_MSG_LEN         4096
 #define CAP_IM_TG_POLL_TIMEOUT_S      20
 #define CAP_IM_TG_RETRY_DELAY_MS      3000
+#define CAP_IM_TG_SEND_MAX_ATTEMPTS   3
+#define CAP_IM_TG_SEND_RETRY_DELAY_MS 500
 #define CAP_IM_TG_ATTACHMENT_QUEUE_LEN 8
 #define CAP_IM_TG_DEDUP_CACHE_SIZE    64
 #define CAP_IM_TG_PATH_BUF_SIZE       256
@@ -1200,7 +1202,17 @@ static esp_err_t cap_im_tg_send_text_chunk_ex(const char *chat_id,
         return ESP_ERR_NO_MEM;
     }
 
-    err = cap_im_tg_api_call("sendMessage", body_json, &resp);
+    for (int attempt = 0; attempt < CAP_IM_TG_SEND_MAX_ATTEMPTS; attempt++) {
+        err = cap_im_tg_api_call("sendMessage", body_json, &resp);
+        if (err == ESP_OK) {
+            break;
+        }
+        if (attempt + 1 < CAP_IM_TG_SEND_MAX_ATTEMPTS) {
+            ESP_LOGW(TAG, "Telegram sendMessage attempt %d failed (%s), retrying",
+                     attempt + 1, esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(CAP_IM_TG_SEND_RETRY_DELAY_MS));
+        }
+    }
     free(body_json);
     if (err == ESP_OK && out_message_id && resp) {
         cJSON *resp_root = cJSON_Parse(resp);
