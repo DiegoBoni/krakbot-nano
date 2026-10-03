@@ -203,6 +203,7 @@
     }
   ],
   "createdAt": "2026-10-03T16:39:05.199Z",
-  "updatedAt": "2026-10-03T16:51:08.878Z",
-  "prNumber": 6
+  "updatedAt": "2026-10-03T16:51:11.450Z",
+  "prNumber": 6,
+  "humanReviewNotified": true
 }
