@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cap_activity_log.h"
 #include "cap_scheduler_internal.h"
 #include "claw_cap.h"
 #include "claw_task.h"
@@ -423,6 +424,32 @@ static esp_err_t cap_scheduler_build_payload_json(const cap_scheduler_entry_t *e
     return ESP_OK;
 }
 
+/* Records the fire in the activity log. Best effort: never changes scheduler behaviour. */
+static void cap_scheduler_log_activity(const cap_scheduler_entry_t *entry, esp_err_t publish_err)
+{
+    char reason[CAP_ACTIVITY_LOG_REASON_MAX + 1];
+    char detail[CAP_ACTIVITY_LOG_DETAIL_MAX + 1];
+    esp_err_t log_err;
+
+    snprintf(reason, sizeof(reason), "schedule %s/%s",
+             cap_scheduler_kind_to_string_local(entry->item.kind), entry->item.id);
+    if (publish_err == ESP_OK) {
+        snprintf(detail, sizeof(detail), "event published");
+    } else {
+        snprintf(detail, sizeof(detail), "publish failed: %s", esp_err_to_name(publish_err));
+    }
+    log_err = cap_activity_log_append(CAP_ACTIVITY_ORIGIN_SCHEDULED_TASK,
+                                      "scheduled task fired",
+                                      reason,
+                                      publish_err == ESP_OK ? CAP_ACTIVITY_RESULT_COMPLETED
+                                                            : CAP_ACTIVITY_RESULT_ERROR,
+                                      entry->item.id,
+                                      detail);
+    if (log_err != ESP_OK && log_err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGD(TAG, "activity log append failed: %s", esp_err_to_name(log_err));
+    }
+}
+
 static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry,
                                                     bool immediate,
                                                     int64_t now_ms)
@@ -520,6 +547,7 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
                  entry->item.event_key);
     }
 
+    cap_scheduler_log_activity(entry, publish_err);
     return err;
 }
 
