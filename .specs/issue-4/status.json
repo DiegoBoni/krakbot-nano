@@ -7,7 +7,7 @@
     "reviewCycles": 1,
     "retries": 0,
     "startedAt": "2026-10-03T16:39:05.199Z",
-    "activeMs": 0
+    "activeMs": 726427
   },
   "artifacts": {
     "specExists": true,
@@ -203,7 +203,7 @@
     }
   ],
   "createdAt": "2026-10-03T16:39:05.199Z",
-  "updatedAt": "2026-10-03T16:51:11.450Z",
+  "updatedAt": "2026-10-03T16:51:12.705Z",
   "prNumber": 6,
   "humanReviewNotified": true
 }
