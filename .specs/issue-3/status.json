@@ -2,7 +2,7 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 3,
   "branch": "nightshift/issue-3",
-  "state": "SPEC",
+  "state": "SPEC_VALIDATION",
   "counters": {
     "reviewCycles": 0,
     "retries": 0,
@@ -10,7 +10,7 @@
     "activeMs": 0
   },
   "artifacts": {
-    "specExists": false,
+    "specExists": true,
     "specValidated": false,
     "planExists": false,
     "planValidated": false,
@@ -26,9 +26,29 @@
       "at": "2026-10-03T16:05:20.724Z",
       "from": "NEW",
       "to": "SPEC"
+    },
+    {
+      "at": "2026-10-03T16:05:56.874Z",
+      "from": "SPEC",
+      "to": "SPEC_VALIDATION"
     }
   ],
-  "agentUsageLog": [],
+  "agentUsageLog": [
+    {
+      "at": "2026-10-03T16:05:55.699Z",
+      "stage": "spec",
+      "agent": "claude-author",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 31069,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 3902,
+        "costUsd": 0.08253659999999999
+      }
+    }
+  ],
   "createdAt": "2026-10-03T16:05:19.400Z",
-  "updatedAt": "2026-10-03T16:05:23.400Z"
+  "updatedAt": "2026-10-03T16:06:00.274Z"
 }
