@@ -5,6 +5,7 @@
  */
 #include "cap_activity_log.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 

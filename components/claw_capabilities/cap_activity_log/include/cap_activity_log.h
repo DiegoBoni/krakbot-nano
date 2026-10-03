@@ -69,6 +69,11 @@ esp_err_t cap_activity_log_start(cap_activity_log_handle_t handle);
 esp_err_t cap_activity_log_stop(cap_activity_log_handle_t handle);
 
 /** @brief  Stop (if running) and free all resources. */
+/**
+ * @note Concurrency contract: callers must make sure no cap_activity_log_append()/list call is in flight
+ *       when stop/delete runs. In the firmware the log lives for the whole uptime and is never stopped,
+ *       so this only matters for tests and for the create-then-start-failed cleanup path.
+ */
 esp_err_t cap_activity_log_delete(cap_activity_log_handle_t handle);
 
 /**

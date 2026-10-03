@@ -1185,11 +1185,17 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
 
         if (activity_err == ESP_OK) {
             activity_err = cap_activity_log_start(activity_log);
+            if (activity_err != ESP_OK) {
+                /* create() succeeded but start() failed: release the singleton instead of leaking it. */
+                (void)cap_activity_log_delete(activity_log);
+            }
         }
         if (activity_err != ESP_OK) {
             ESP_LOGW(TAG, "Failed to start activity log: %s (continuing without it)",
                      esp_err_to_name(activity_err));
         }
+        /* The log runs for the whole firmware lifetime: app_claw has no orderly teardown, so the handle is
+         * intentionally not kept. Pending entries are flushed by the periodic flush task. */
     }
 #endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER

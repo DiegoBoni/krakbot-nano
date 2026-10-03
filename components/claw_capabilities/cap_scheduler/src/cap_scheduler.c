@@ -472,13 +472,16 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
         planned_time_ms = now_ms;
     }
 
-    ESP_RETURN_ON_ERROR(cap_scheduler_build_payload_json(entry,
-                                                         planned_time_ms,
-                                                         now_ms,
-                                                         payload_json,
-                                                         sizeof(payload_json)),
-                        TAG,
-                        "Failed to build schedule payload");
+    err = cap_scheduler_build_payload_json(entry,
+                                           planned_time_ms,
+                                           now_ms,
+                                           payload_json,
+                                           sizeof(payload_json));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to build schedule payload: %s", esp_err_to_name(err));
+        cap_scheduler_log_activity(entry, err);
+        return err;
+    }
 
     snprintf(event.event_id, sizeof(event.event_id), "sch-%08" PRIx32,
              (uint32_t)(now_ms & 0xffffffffU));
