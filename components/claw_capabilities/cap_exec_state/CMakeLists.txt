@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "src/cap_exec_state.c"
+        "src/cap_exec_state_caps.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        claw_cap
+        claw_core
+    PRIV_REQUIRES
+        claw_utils
+        esp_timer
+        freertos
+        json
+        log
+        vfs
+)
