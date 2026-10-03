@@ -5,7 +5,7 @@
   "state": "AI_REVIEW",
   "counters": {
     "reviewCycles": 0,
-    "retries": 0,
+    "retries": 1,
     "startedAt": "2026-10-03T20:49:17.710Z",
     "activeMs": 0
   },
@@ -141,9 +141,19 @@
         "inputTokens": 1914030,
         "outputTokens": 21051
       }
+    },
+    {
+      "at": "2026-10-03T21:09:01.795Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 0,
+      "attempt": 1,
+      "outcome": "failure"
     }
   ],
   "createdAt": "2026-10-03T20:49:17.710Z",
-  "updatedAt": "2026-10-03T21:08:56.204Z",
-  "prNumber": 8
+  "updatedAt": "2026-10-03T21:09:01.795Z",
+  "prNumber": 8,
+  "lastError": "El agente 'claude-reviewer' no está disponible: {\"duration_api_ms\":0,\"stop_reason\":\"stop_sequence\",\"session_id\":\"2f091bb7-3e9c-47b6-8d2d-d6e52e99e9f3\",\"total_cost_usd\":0,\"usage\":{\"output_tokens_details\":{\"thinking_tokens\":0},\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_sear"
 }
