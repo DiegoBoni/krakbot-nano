@@ -31,7 +31,8 @@ static const char *TAG = "cap_exec_state";
 #define EXEC_STATE_BAD_SUFFIX           ".bad"
 #define EXEC_STATE_FLUSH_RETRY_MS       2000
 #define EXEC_STATE_FLUSH_TASK_NAME      "exec_state_flush"
-#define EXEC_STATE_FLUSH_TASK_STACK     4096
+#define EXEC_STATE_FLUSH_TASK_STACK     6144  /* FATFS I/O + cJSON serialization */
+#define EXEC_STATE_LOAD_MAX_BYTES       65536 /* fixed read cap; max_file_bytes only bounds the next flush */
 #define EXEC_STATE_FLUSH_TASK_PRIO      (tskIDLE_PRIORITY + 2)
 #define EXEC_STATE_JSON_KEY_VERSION     "version"
 #define EXEC_STATE_JSON_KEY_ENTRIES     "entries"
@@ -239,7 +240,10 @@ static exec_state_load_result_t load_file_locked(struct cap_exec_state_t *h, con
     if (stat(path, &st) != 0) {
         return EXEC_STATE_LOAD_MISSING;
     }
-    if (st.st_size < 0 || (uint32_t)st.st_size > h->max_file_bytes) {
+    /* Lowering CONFIG_CAP_EXEC_STATE_MAX_FILE_BYTES between versions must not discard existing state:
+     * read up to a fixed cap and let the next flush trim to the configured budget. */
+    if (st.st_size < 0 || (uint32_t)st.st_size > (h->max_file_bytes > EXEC_STATE_LOAD_MAX_BYTES
+                                                  ? h->max_file_bytes : EXEC_STATE_LOAD_MAX_BYTES)) {
         ESP_LOGW(TAG, "State file %s too large (%ld bytes)", path, (long)st.st_size);
         return EXEC_STATE_LOAD_BAD;
     }
@@ -395,10 +399,13 @@ static esp_err_t write_state_file(const struct cap_exec_state_t *h, const char *
 
 static void arm_flush_timer(struct cap_exec_state_t *h, uint32_t delay_ms)
 {
-    if (!h->flush_timer || esp_timer_is_active(h->flush_timer)) {
+    /* Snapshot the handle once: stop() clears flush_timer. Callers must not race stop()/delete(). */
+    esp_timer_handle_t timer = h->flush_timer;
+
+    if (!timer || esp_timer_is_active(timer)) {
         return;
     }
-    esp_timer_start_once(h->flush_timer, (uint64_t)delay_ms * 1000ULL);
+    esp_timer_start_once(timer, (uint64_t)delay_ms * 1000ULL);
 }
 
 static esp_err_t flush_now(struct cap_exec_state_t *h)

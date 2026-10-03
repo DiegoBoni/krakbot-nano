@@ -38,3 +38,9 @@ A file that is too large, is not valid JSON, lacks `entries`, or has a newer `ve
 ## Scheduled tasks
 
 By convention a scheduled task records its last run under the key `task:<scheduler_id>`.
+
+## Notes
+
+- The state file is written to `*.tmp` and then renamed. FATFS `rename()` does not overwrite, so the previous file is unlinked first; a crash between the two leaves only the `.tmp`, which `load` recovers.
+- `stop()`/`delete()` must not run concurrently with `mark`/`check`; in the firmware the store lives for the whole uptime.
+- Not built or run in CI: validate with `idf.py build` and the test app under `test_apps/exec_state_test` on a board.

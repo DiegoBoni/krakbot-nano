@@ -16,7 +16,7 @@
     "planValidated": true,
     "tasksExists": true,
     "implementationComplete": true,
-    "requiredTestsPassed": true,
+    "requiredTestsPassed": false,
     "prExists": true,
     "aiReviewComplete": true,
     "blockingFindings": 0
