@@ -104,6 +104,9 @@ dependencies:
       - if: $CONFIG{APP_CLAW_CAP_STORAGE_GUARD} == True
     path: ../../claw_capabilities/cap_storage_guard
 
+  cap_activity_log:
+    path: ../../claw_capabilities/cap_activity_log
+
   claw_cap:
     path: ../../claw_modules/claw_cap
 

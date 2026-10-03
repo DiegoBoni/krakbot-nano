@@ -202,6 +202,15 @@ menu "App Claw Config"
                 and exposes storage_status/storage_cleanup so the agent can
                 free up saved IM attachments and TTS cache on request.
 
+        config APP_CLAW_CAP_ACTIVITY_LOG
+            bool "Enable activity log capability"
+            default y
+            help
+                Create and start cap_activity_log before the scheduler and expose
+                activity_log_list / activity_log_append. Keeps a bounded JSONL
+                history of autonomous actions under the DATA root. The component
+                itself is always built because cap_scheduler logs into it.
+
         config APP_CLAW_CAP_ROUTER_MGR
             bool "Enable router manager capability"
             select APP_CLAW_CAP_EVENT_ROUTER

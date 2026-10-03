@@ -97,6 +97,10 @@ esp_err_t cap_scheduler_remove(const char *id);
 esp_err_t cap_scheduler_enable(const char *id, bool enabled);
 esp_err_t cap_scheduler_pause(const char *id);
 esp_err_t cap_scheduler_resume(const char *id);
+/**
+ * @note  ESP_OK means the event was published, not that the work finished. The
+ *        final outcome is recorded by the agent via activity_log_append.
+ */
 esp_err_t cap_scheduler_trigger_now(const char *id);
 esp_err_t cap_scheduler_get_snapshot(const char *id, cap_scheduler_snapshot_t *out);
 esp_err_t cap_scheduler_list_json(char *buf, size_t size);

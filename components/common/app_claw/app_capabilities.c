@@ -46,6 +46,9 @@
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
 #include "cap_router_mgr.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+#include "cap_activity_log.h"
+#endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
 #include "cap_scheduler.h"
 #endif
@@ -808,6 +811,16 @@ static esp_err_t app_cap_register_openai_tts(const app_claw_config_t *config,
 }
 #endif
 
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+static esp_err_t app_cap_register_activity_log(const app_claw_config_t *config,
+                                               const app_claw_storage_paths_t *paths)
+{
+    (void)config;
+    (void)paths;
+    return cap_activity_log_register_group();
+}
+#endif
+
 #if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
 static esp_err_t app_cap_prepare_storage_guard(const app_claw_config_t *config,
                                                const app_claw_storage_paths_t *paths)
@@ -910,6 +923,9 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
 #if CONFIG_APP_CLAW_CAP_OPENAI_TTS
     { "cap_openai_tts", "OpenAI TTS", "Register OpenAI text-to-speech cap", true, app_cap_prepare_openai_tts, app_cap_register_openai_tts },
 #endif
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+    { "cap_activity_log", "Activity Log", "Register activity log cap", true, NULL, app_cap_register_activity_log },
+#endif
 #if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
     { "cap_storage_guard", "Storage Guard", "Register storage guard cap", true, app_cap_prepare_storage_guard, app_cap_register_storage_guard },
 #endif
@@ -975,6 +991,9 @@ static const app_capability_group_info_t s_capability_group_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_OPENAI_TTS
     { "cap_openai_tts", "OpenAI TTS", false },
+#endif
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+    { "cap_activity_log", "Activity Log", false },
 #endif
 #if CONFIG_APP_CLAW_CAP_STORAGE_GUARD
     { "cap_storage_guard", "Storage Guard", false },
