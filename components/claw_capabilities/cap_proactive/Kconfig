@@ -1,0 +1,14 @@
+menu "Proactive Pulse"
+    config CAP_PROACTIVE_MIN_INTERVAL_SEC
+        int "Minimum pulse interval (seconds)"
+        range 60 86400
+        default 300
+    config CAP_PROACTIVE_MAX_INTERVAL_SEC
+        int "Maximum pulse interval (seconds)"
+        range 60 604800
+        default 86400
+    config CAP_PROACTIVE_DEFAULT_INTERVAL_SEC
+        int "Default pulse interval (seconds)"
+        range 60 604800
+        default 900
+endmenu
