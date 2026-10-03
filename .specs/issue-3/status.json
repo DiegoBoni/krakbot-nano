@@ -2,7 +2,7 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 3,
   "branch": "nightshift/issue-3",
-  "state": "FIXING",
+  "state": "NEEDS_HUMAN",
   "counters": {
     "reviewCycles": 4,
     "retries": 0,
@@ -105,6 +105,12 @@
       "from": "AI_REVIEW",
       "to": "FIXING",
       "reason": "El PR documenta con honestidad el descubrimiento de la fase 0 y los bloqueos del stack C/ESP-IDF, pero status.json afirma implementación completa y tests pasados sin que exista código ni tests, y eso contradice el resto de la documentación. Se piden cambios para corregir esos flags."
+    },
+    {
+      "at": "2026-10-03T16:17:31.981Z",
+      "from": "FIXING",
+      "to": "NEEDS_HUMAN",
+      "reason": "Se superaron los ciclos de review permitidos (4/3)"
     }
   ],
   "agentUsageLog": [
@@ -278,7 +284,7 @@
     }
   ],
   "createdAt": "2026-10-03T16:05:19.400Z",
-  "updatedAt": "2026-10-03T16:17:30.581Z",
+  "updatedAt": "2026-10-03T16:17:36.385Z",
   "prNumber": 5,
-  "lastError": "El PR documenta con honestidad el descubrimiento de la fase 0 y los bloqueos del stack C/ESP-IDF, pero status.json afirma implementación completa y tests pasados sin que exista código ni tests, y eso contradice el resto de la documentación. Se piden cambios para corregir esos flags."
+  "lastError": "Se superaron los ciclos de review permitidos (4/3)"
 }
