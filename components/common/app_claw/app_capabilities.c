@@ -46,10 +46,10 @@
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
 #include "cap_router_mgr.h"
 #endif
-#if CONFIG_APP_CLAW_CAP_SCHEDULER
 #if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
 #include "cap_activity_log.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_SCHEDULER
 #include "cap_scheduler.h"
 #endif
 #if CONFIG_APP_CLAW_CAP_SESSION_MGR
