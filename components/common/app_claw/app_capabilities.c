@@ -15,6 +15,9 @@
 #if CONFIG_APP_CLAW_CAP_AGENT_MGR
 #include "cap_agent_mgr.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_EXEC_STATE
+#include "cap_exec_state.h"
+#endif
 #if CONFIG_APP_CLAW_CAP_FILES
 #include "cap_files.h"
 #endif
@@ -595,6 +598,23 @@ static esp_err_t app_cap_register_im_local(const app_claw_config_t *config,
 }
 #endif
 
+#if CONFIG_APP_CLAW_CAP_EXEC_STATE
+static esp_err_t app_cap_register_exec_state(const app_claw_config_t *config,
+                                             const app_claw_storage_paths_t *paths)
+{
+    esp_err_t err;
+
+    (void)config;
+    (void)paths;
+    err = cap_exec_state_register_group();
+    if (err != ESP_OK) {
+        /* Dedup state is optional: keep booting without these capabilities. */
+        ESP_LOGE(TAG, "cap_exec_state unavailable: %s", esp_err_to_name(err));
+    }
+    return ESP_OK;
+}
+#endif
+
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
 static esp_err_t app_cap_register_scheduler(const app_claw_config_t *config,
                                             const app_claw_storage_paths_t *paths)
@@ -890,6 +910,9 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
 #if CONFIG_APP_CLAW_CAP_FILES
     { "cap_files", "Files", "Register files cap", true, NULL, app_cap_register_files },
 #endif
+#if CONFIG_APP_CLAW_CAP_EXEC_STATE
+    { "cap_exec_state", "Exec State", "Register execution state cap", true, NULL, app_cap_register_exec_state },
+#endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
     { "cap_scheduler", "Scheduler", "Register scheduler cap", true, NULL, app_cap_register_scheduler },
 #endif
@@ -958,6 +981,9 @@ static const app_capability_group_info_t s_capability_group_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_FILES
     { "cap_files", "Files", true },
+#endif
+#if CONFIG_APP_CLAW_CAP_EXEC_STATE
+    { "cap_exec_state", "Exec State", false },
 #endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
     { "cap_scheduler", "Scheduler", false },

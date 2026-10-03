@@ -1,0 +1,33 @@
+menu "Claw Exec State Capability"
+
+config CAP_EXEC_STATE_MAX_ENTRIES
+    int "Maximum number of tracked entries"
+    range 10 500
+    default 200
+    help
+        Maximum number of execution-state entries kept in memory and on disk.
+        When full, the least recently marked entry is evicted.
+
+config CAP_EXEC_STATE_MAX_FILE_BYTES
+    int "Maximum size of the persisted state file in bytes"
+    range 4096 65535
+    default 49152
+    help
+        Upper bound for the serialized state file. Oldest entries are evicted
+        when the serialized JSON would exceed this budget.
+
+config CAP_EXEC_STATE_FLUSH_DELAY_MS
+    int "Deferred flush delay in milliseconds"
+    range 0 60000
+    default 2000
+    help
+        Delay between the first unsaved mark and the flush to storage. Marks
+        arriving within the window are coalesced into one write. 0 flushes
+        synchronously on every mark.
+
+config CAP_EXEC_STATE_LIST_DEFAULT_LIMIT
+    int "Default entry count returned by exec_state_list"
+    range 1 500
+    default 20
+
+endmenu
