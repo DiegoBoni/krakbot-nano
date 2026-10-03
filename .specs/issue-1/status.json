@@ -2,7 +2,7 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 1,
   "branch": "nightshift/issue-1",
-  "state": "PR_OPEN",
+  "state": "AI_REVIEW",
   "counters": {
     "reviewCycles": 0,
     "retries": 0,
@@ -17,7 +17,7 @@
     "tasksExists": true,
     "implementationComplete": true,
     "requiredTestsPassed": true,
-    "prExists": false,
+    "prExists": true,
     "aiReviewComplete": false,
     "blockingFindings": 0
   },
@@ -61,6 +61,11 @@
       "at": "2026-10-03T21:08:45.721Z",
       "from": "TESTING",
       "to": "PR_OPEN"
+    },
+    {
+      "at": "2026-10-03T21:08:52.013Z",
+      "from": "PR_OPEN",
+      "to": "AI_REVIEW"
     }
   ],
   "agentUsageLog": [
@@ -139,5 +144,6 @@
     }
   ],
   "createdAt": "2026-10-03T20:49:17.710Z",
-  "updatedAt": "2026-10-03T21:08:48.893Z"
+  "updatedAt": "2026-10-03T21:08:56.204Z",
+  "prNumber": 8
 }
