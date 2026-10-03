@@ -7,7 +7,7 @@
     "reviewCycles": 4,
     "retries": 0,
     "startedAt": "2026-10-03T16:05:19.400Z",
-    "activeMs": 0
+    "activeMs": 736993
   },
   "artifacts": {
     "specExists": true,
@@ -284,7 +284,7 @@
     }
   ],
   "createdAt": "2026-10-03T16:05:19.400Z",
-  "updatedAt": "2026-10-03T16:17:36.385Z",
+  "updatedAt": "2026-10-03T16:17:37.717Z",
   "prNumber": 5,
   "lastError": "Se superaron los ciclos de review permitidos (4/3)"
 }
