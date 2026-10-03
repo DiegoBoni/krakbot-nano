@@ -1,5 +1,42 @@
 # Plan de implementación: Estado persistente para ejecuciones autónomas y recurrentes
 
+## Estado vigente después del descubrimiento (2026-10-03)
+
+**Bloqueado en fase 0; implementación no iniciada y tests no ejecutados.**
+La evidencia vigente está en [discovery.md](discovery.md). El runtime es C con
+ESP-IDF/FreeRTOS y Lua, con dependencias CMake/IDF Component Manager; Node y
+Python no son el runtime de la aplicación. No hay un comando único de tests
+para este issue y el entorno local no dispone de ESP-IDF para ejecutar el build.
+
+**El contenido original debajo es una propuesta histórica obsoleta, no una
+instrucción de implementación aprobada.** Esto incluye las rutas `src/state`,
+las extensiones TS/Python, los bindings SQLite host, las variables de entorno,
+el helper `runTracked`, las fases 1–6, el fallback JSON y el orden de PRs.
+Sus criterios de aceptación siguen siendo objetivos pendientes, no resultados.
+No debe ejecutarse ninguna fase posterior hasta resolver los bloqueos y
+reemplazar el diseño y las tareas por una versión compatible con el firmware.
+Marcar el documento como obsoleto no completa T0.8.
+
+| Tarea | Evidencia y pendiente real |
+|---|---|
+| T0.1 | Stack y comandos de build documentados localmente; comentario en el issue pendiente. No hay tests del store ni resultados de CI. |
+| T0.2 | Scheduler identificado en `components/claw_capabilities/cap_scheduler/src/cap_scheduler.c` y `cap_scheduler_store.c`; Autonomous Pulse no encontrado. Falta definir su entrypoint y cómo observar el resultado final del trabajo asíncrono. |
+| T0.3 | Configuración en `application/edge_agent/components/app_config/` y NVS. DATA se resuelve con `claw_paths`; no se leen variables `KRAKBOT_STATE_*`. Equivalencia settings/Kconfig pendiente. |
+| T0.4 | Bootstrap en `application/edge_agent/main/main.c` y `components/common/app_claw/app_claw.c`, después de `build_storage_paths()` y antes de los consumidores. Ownership, inyección y shutdown del store pendientes. |
+| T0.5 | Backend sin aprobar. Validar SQLite para ESP-IDF/FATFS en CI y target, o aprobar fallback JSON en C; no instalar bindings Node/Python. |
+| T0.6 | Defaults propuestos: retención apagada, deduplicación indefinida, resumen JSON de 16 KB y una instancia por archivo. No implementados; registro externo pendiente. |
+| T0.7 | `commitProcessed` sin aprobación; mantenerlo fuera de la implementación hasta decidir. |
+| T0.8 | Replanificación pendiente después de resolver los bloqueos. `components/claw_modules/claw_state/` es solo una propuesta, con handle opaco, API `esp_err_t` y rutas mediante `claw_paths_join(CLAW_PATH_DATA, ...)`. |
+
+El scheduler publica eventos: `ESP_OK` indica aceptación de la publicación,
+no éxito de la acción. La integración futura debe registrar el cierre real antes
+de marcar recursos procesados. Ningún criterio funcional del issue se declara
+cumplido por esta documentación. No corresponde cerrar el issue por este cambio.
+
+---
+
+## Propuesta original archivada (obsoleta)
+
 **Repo:** DiegoBoni/krakbot-nano · **Issue:** #3 · **Spec de referencia:** "Estado persistente para ejecuciones autónomas y recurrentes"
 
 > **Aviso:** el plan se armó sin acceso al código del repo, porque el workspace del agente estaba vacío. Las rutas, los nombres de módulos y las dependencias son propuestas. La **Fase 0** sirve para validarlos y ajustar el plan antes de escribir código.

@@ -13,10 +13,10 @@
     "specExists": true,
     "specValidated": true,
     "planExists": true,
-    "planValidated": true,
+    "planValidated": false,
     "tasksExists": true,
-    "implementationComplete": true,
-    "requiredTestsPassed": true,
+    "implementationComplete": false,
+    "requiredTestsPassed": false,
     "prExists": true,
     "aiReviewComplete": false,
     "blockingFindings": 1

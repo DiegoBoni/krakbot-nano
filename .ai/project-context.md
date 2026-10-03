@@ -43,7 +43,7 @@
 
 ## [context.backend]
 
-- Issue #3 scan: runtime remains C/Lua firmware. Autonomous Pulse and SQLite were not detected; scheduler publishes asynchronous router events and persists runtime counters in NVS. Backend approval and end-to-end completion tracking are NEEDS CLARIFICATION. See `.specs/issue-3/discovery.md`; proposed Node/Python state paths do not match this checkout. Local ESP-IDF build unavailable (`IDF_PATH` unset, `idf.py` absent).
+- Issue #3 scan refreshed 2026-10-03: runtime remains C/Lua firmware. Autonomous Pulse and SQLite were not detected; scheduler publishes asynchronous router events and persists runtime counters in NVS. Backend approval and end-to-end completion tracking are NEEDS CLARIFICATION. See `.specs/issue-3/discovery.md`; proposed Node/Python state paths do not match this checkout. Local ESP-IDF build unavailable (`IDF_PATH` unset, `idf.py` absent).
 
 - Language + runtime: C on ESP-IDF (FreeRTOS-based), running on ESP32-series chips
 - Framework: ESP-IDF component model; custom agent-runtime layer (`claw_core`, `claw_cap`, `claw_event_router`)
