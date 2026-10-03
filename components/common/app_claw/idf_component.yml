@@ -64,6 +64,11 @@ dependencies:
       - if: $CONFIG{APP_CLAW_CAP_ROUTER_MGR} == True
     path: ../../claw_capabilities/cap_router_mgr
 
+  cap_proactive:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_PROACTIVE} == True
+    path: ../../claw_capabilities/cap_proactive
+
   cap_scheduler:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_SCHEDULER} == True

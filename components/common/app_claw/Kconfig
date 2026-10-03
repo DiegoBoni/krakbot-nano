@@ -115,6 +115,14 @@ menu "App Claw Config"
                 Enable the scheduler capability and keep app_claw's direct dependency
                 on cap_scheduler.
 
+        config APP_CLAW_CAP_PROACTIVE
+            bool "Enable proactive pulse capability"
+            depends on APP_CLAW_CAP_SCHEDULER && APP_CLAW_CAP_ROUTER_MGR
+            depends on APP_CLAW_CAP_EXEC_STATE && APP_CLAW_CAP_ACTIVITY_LOG
+            default y
+            help
+                Expose proactive control tools. Pulses remain OFF until enabled.
+
         config APP_CLAW_CAP_EXEC_STATE
             bool "Enable execution state capability"
             default y

@@ -4,7 +4,7 @@
 
 - Project: KrakBot Nano (fork of ESP-Claw; frontend package `krakbot-nano-frontend`, docs package `krakbot-nano-doc`, simulator package `@krakbot-nano/simulator-pages`)
 - Version: 0.1.0 (per firmware/frontend package metadata; see CHANGELOG.md for release history)
-- Last updated: 2026-08-12
+- Last updated: 2026-10-03
 - Owner: Espressif (esp-claw org, upstream) — see LICENSE (Apache-2.0); this repo is a KrakBot Nano fork (N16R8 flash config, pioarduino build) per commit `524bb58`
 
 ## Stack
@@ -42,6 +42,8 @@
 -->
 
 ## [context.backend]
+
+- Autonomous Pulse scan: scheduler and router expose global APIs; cap_exec_state and cap_activity_log exist and are registered. Proactive control composes these through a new opaque object; no claw_core changes.
 
 - Language + runtime: C on ESP-IDF (FreeRTOS-based), running on ESP32-series chips
 - Framework: ESP-IDF component model; custom agent-runtime layer (`claw_core`, `claw_cap`, `claw_event_router`)

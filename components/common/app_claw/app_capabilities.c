@@ -55,6 +55,9 @@
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
 #include "cap_scheduler.h"
 #endif
+#if CONFIG_APP_CLAW_CAP_PROACTIVE
+#include "cap_proactive.h"
+#endif
 #if CONFIG_APP_CLAW_CAP_SESSION_MGR
 #include "cap_session_mgr.h"
 #endif
@@ -888,6 +891,46 @@ static esp_err_t app_cap_register_agent_mgr(const app_claw_config_t *config,
 }
 #endif
 
+#if CONFIG_APP_CLAW_CAP_PROACTIVE
+/* App owns the object for the lifetime of the runtime. Router and scheduler
+ * are initialized by app_claw before this registration phase. */
+static cap_proactive_handle_t s_proactive;
+static esp_err_t app_cap_register_proactive(const app_claw_config_t *config,
+                                            const app_claw_storage_paths_t *paths)
+{
+    (void)config;
+    (void)paths;
+    if (s_proactive) {
+        return cap_proactive_register_group(s_proactive);
+    }
+    cap_proactive_config_t dependencies = {
+        /* These are runtime services, not tool-group visibility. Kconfig
+         * requires both; their real APIs detect initialization failures.
+         * A tool whitelist can omit scheduler/router manager descriptors
+         * while the underlying services still process persisted jobs. */
+        .scheduler_available = true,
+        .router_available = true,
+    };
+    esp_err_t err = cap_proactive_create(&dependencies, &s_proactive);
+    if (err == ESP_OK) {
+        /* Restore/repair before app_claw starts the scheduler task. */
+        err = cap_proactive_start(s_proactive);
+    }
+    if (err == ESP_OK) {
+        err = cap_proactive_register_group(s_proactive);
+    }
+    if (err != ESP_OK && s_proactive) {
+        esp_err_t cleanup_err = cap_proactive_delete(s_proactive);
+        if (cleanup_err == ESP_OK) {
+            s_proactive = NULL;
+        } else {
+            ESP_LOGW(TAG, "Failed to release proactive: %s", esp_err_to_name(cleanup_err));
+        }
+    }
+    return err;
+}
+#endif
+
 static const app_capability_group_entry_t s_capability_group_entries[] = {
 #if CONFIG_APP_CLAW_CAP_AGENT_MGR
     { "cap_agent_mgr", "Agent Manager", "Register agent manager cap", true, NULL, app_cap_register_agent_mgr },
@@ -954,6 +997,9 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", "Register router manager cap", true, NULL, app_cap_register_router_mgr },
+#endif
+#if CONFIG_APP_CLAW_CAP_PROACTIVE
+    { "cap_proactive", "Proactive Pulse", "Register proactive pulse cap", true, NULL, app_cap_register_proactive },
 #endif
 #if CONFIG_APP_CLAW_CAP_SESSION_MGR
     { "cap_session_mgr", "Session Manager", "Register session manager cap", false, NULL, app_cap_register_session_mgr },
@@ -1026,6 +1072,9 @@ static const app_capability_group_info_t s_capability_group_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
     { "cap_router_mgr", "Router Manager", false },
+#endif
+#if CONFIG_APP_CLAW_CAP_PROACTIVE
+    { "cap_proactive", "Proactive Pulse", true },
 #endif
 #if CONFIG_APP_CLAW_CAP_SESSION_MGR
     { "cap_session_mgr", "Session Manager", false },
