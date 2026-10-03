@@ -115,6 +115,13 @@ menu "App Claw Config"
                 Enable the scheduler capability and keep app_claw's direct dependency
                 on cap_scheduler.
 
+        config APP_CLAW_CAP_EXEC_STATE
+            bool "Enable execution state capability"
+            default y
+            help
+                Enable cap_exec_state, a persistent store that lets the agent
+                deduplicate processed resources across autonomous runs.
+
         config APP_CLAW_CAP_LUA
             bool "Enable Lua capability"
             default y

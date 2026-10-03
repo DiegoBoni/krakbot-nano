@@ -2,6 +2,11 @@ dependencies:
   cap_boards:
     path: ../../claw_capabilities/cap_boards
 
+  cap_exec_state:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_EXEC_STATE} == True
+    path: ../../claw_capabilities/cap_exec_state
+
   cap_files:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_FILES} == True
