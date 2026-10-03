@@ -1,0 +1,43 @@
+menu "Activity log (cap_activity_log)"
+
+config CAP_ACTIVITY_LOG_MAX_BYTES
+    int "Max size of one activity log segment (bytes)"
+    default 131072
+    range 16384 1048576
+    help
+        The log keeps two segments (activity.jsonl and activity.1.jsonl).
+        Worst case disk usage is 2 x this value. The smallest DATA partition
+        (8 MB boards) is 1664 KB, so the default of 128 KB uses at most 256 KB.
+
+config CAP_ACTIVITY_LOG_FLUSH_INTERVAL_MS
+    int "Flush interval (ms)"
+    default 60000
+    range 5000 600000
+    help
+        Pending entries are written to flash at most this often.
+
+config CAP_ACTIVITY_LOG_FLUSH_BATCH
+    int "Flush batch (entries)"
+    default 16
+    range 1 128
+    help
+        A flush is triggered as soon as this many entries are pending.
+
+config CAP_ACTIVITY_LOG_BUFFER_ENTRIES
+    int "In-RAM buffer size (entries)"
+    default 32
+    range 4 256
+    help
+        Must be >= CAP_ACTIVITY_LOG_FLUSH_BATCH (otherwise the batch is
+        clamped to this value). When the buffer is full the oldest pending
+        entry is dropped and counted in the "dropped" statistic.
+
+config CAP_ACTIVITY_LOG_FLUSH_ON_ERROR
+    bool "Flush immediately when an error entry is appended"
+    default y
+
+config CAP_ACTIVITY_LOG_TASK_STACK
+    int "Flush task stack size (bytes)"
+    default 4096
+
+endmenu

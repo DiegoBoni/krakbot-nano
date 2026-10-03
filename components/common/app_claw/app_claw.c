@@ -15,6 +15,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+#include "cap_activity_log.h"
+#endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
 #include "cap_scheduler.h"
 #endif
@@ -1174,6 +1177,27 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
     ESP_RETURN_ON_ERROR(claw_event_router_init(&router_config), TAG, "Failed to init event router");
 #endif
 
+#if CONFIG_APP_CLAW_CAP_ACTIVITY_LOG
+    {
+        /* Before the scheduler so the first fire is already logged. Not fatal. */
+        cap_activity_log_handle_t activity_log = NULL;
+        esp_err_t activity_err = cap_activity_log_create(&(cap_activity_log_config_t) {0}, &activity_log);
+
+        if (activity_err == ESP_OK) {
+            activity_err = cap_activity_log_start(activity_log);
+            if (activity_err != ESP_OK) {
+                /* create() succeeded but start() failed: release the singleton instead of leaking it. */
+                (void)cap_activity_log_delete(activity_log);
+            }
+        }
+        if (activity_err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to start activity log: %s (continuing without it)",
+                     esp_err_to_name(activity_err));
+        }
+        /* The log runs for the whole firmware lifetime: app_claw has no orderly teardown, so the handle is
+         * intentionally not kept. Pending entries are flushed by the periodic flush task. */
+    }
+#endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
     {
         esp_err_t scheduler_err = cap_scheduler_init(&(cap_scheduler_config_t) {

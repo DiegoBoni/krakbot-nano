@@ -1,0 +1,209 @@
+{
+  "repo": "DiegoBoni/krakbot-nano",
+  "issueNumber": 4,
+  "branch": "nightshift/issue-4",
+  "state": "HUMAN_REVIEW",
+  "counters": {
+    "reviewCycles": 1,
+    "retries": 0,
+    "startedAt": "2026-10-03T16:39:05.199Z",
+    "activeMs": 727075
+  },
+  "artifacts": {
+    "specExists": true,
+    "specValidated": true,
+    "planExists": true,
+    "planValidated": true,
+    "tasksExists": true,
+    "implementationComplete": true,
+    "requiredTestsPassed": true,
+    "prExists": true,
+    "aiReviewComplete": true,
+    "blockingFindings": 0
+  },
+  "history": [
+    {
+      "at": "2026-10-03T16:39:06.279Z",
+      "from": "NEW",
+      "to": "SPEC"
+    },
+    {
+      "at": "2026-10-03T16:40:03.559Z",
+      "from": "SPEC",
+      "to": "SPEC_VALIDATION"
+    },
+    {
+      "at": "2026-10-03T16:40:11.693Z",
+      "from": "SPEC_VALIDATION",
+      "to": "PLANNING"
+    },
+    {
+      "at": "2026-10-03T16:42:44.753Z",
+      "from": "PLANNING",
+      "to": "PLAN_VALIDATION"
+    },
+    {
+      "at": "2026-10-03T16:42:58.357Z",
+      "from": "PLAN_VALIDATION",
+      "to": "TASKS"
+    },
+    {
+      "at": "2026-10-03T16:44:32.666Z",
+      "from": "TASKS",
+      "to": "IMPLEMENTING"
+    },
+    {
+      "at": "2026-10-03T16:49:02.184Z",
+      "from": "IMPLEMENTING",
+      "to": "TESTING"
+    },
+    {
+      "at": "2026-10-03T16:49:07.494Z",
+      "from": "TESTING",
+      "to": "PR_OPEN"
+    },
+    {
+      "at": "2026-10-03T16:49:13.783Z",
+      "from": "PR_OPEN",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-03T16:49:52.188Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "El diseño es sólido: append no hace I/O, los locks no se anidan, la rotación es tolerante y la lectura ignora líneas corruptas. Hay un bug de compilación en app_capabilities.c: el include del header está dentro del bloque del scheduler, y eso rompe el build cuando el scheduler está deshabilitado y el log habilitado. Pido cambios por ese punto. Los demás son observaciones menores, y el código no fue compilado ni probado."
+    },
+    {
+      "at": "2026-10-03T16:50:22.302Z",
+      "from": "FIXING",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-03T16:51:05.055Z",
+      "from": "AI_REVIEW",
+      "to": "HUMAN_REVIEW"
+    }
+  ],
+  "agentUsageLog": [
+    {
+      "at": "2026-10-03T16:40:02.094Z",
+      "stage": "spec",
+      "agent": "claude-author",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 51991,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 6942,
+        "costUsd": 0.12000060000000001
+      }
+    },
+    {
+      "at": "2026-10-03T16:40:11.693Z",
+      "stage": "spec",
+      "agent": "claude-author",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 3085,
+      "attempt": 1,
+      "outcome": "success"
+    },
+    {
+      "at": "2026-10-03T16:42:43.443Z",
+      "stage": "plan",
+      "agent": "claude-author",
+      "model": "claude-opus-5-5",
+      "durationMs": 146335,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 16379,
+        "costUsd": 0.41294860000000005
+      }
+    },
+    {
+      "at": "2026-10-03T16:42:58.357Z",
+      "stage": "plan",
+      "agent": "claude-author",
+      "model": "claude-opus-5-5",
+      "durationMs": 7617,
+      "attempt": 1,
+      "outcome": "success"
+    },
+    {
+      "at": "2026-10-03T16:44:31.208Z",
+      "stage": "tasks",
+      "agent": "claude-author",
+      "model": "claude-opus-5-5",
+      "durationMs": 87487,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 11258,
+        "costUsd": 0.4264806
+      }
+    },
+    {
+      "at": "2026-10-03T16:49:02.182Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 264249,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 42,
+        "outputTokens": 37378,
+        "costUsd": 1.2589078
+      }
+    },
+    {
+      "at": "2026-10-03T16:49:51.308Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 32209,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 3174,
+        "costUsd": 0.31080060000000004
+      }
+    },
+    {
+      "at": "2026-10-03T16:50:22.301Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 23835,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 1184,
+        "costUsd": 0.30676939999999997
+      }
+    },
+    {
+      "at": "2026-10-03T16:51:04.145Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 36039,
+      "attempt": 1,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 3350,
+        "costUsd": 0.3390646
+      }
+    }
+  ],
+  "createdAt": "2026-10-03T16:39:05.199Z",
+  "updatedAt": "2026-10-03T20:49:15.208Z",
+  "prNumber": 6,
+  "humanReviewNotified": true
+}

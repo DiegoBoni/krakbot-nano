@@ -11,4 +11,6 @@ idf_component_register(
         claw_event_router
         console
         nvs_flash
+    PRIV_REQUIRES
+        cap_activity_log
 )
