@@ -7,7 +7,7 @@
     "reviewCycles": 0,
     "retries": 1,
     "startedAt": "2026-10-03T20:49:17.710Z",
-    "activeMs": 1184429
+    "activeMs": 1190701
   },
   "artifacts": {
     "specExists": true,
@@ -159,7 +159,7 @@
     }
   ],
   "createdAt": "2026-10-03T20:49:17.710Z",
-  "updatedAt": "2026-10-04T01:00:33.034Z",
+  "updatedAt": "2026-10-04T01:00:35.086Z",
   "prNumber": 8,
   "lastError": "El PR se mergeó antes de terminar el review automático"
 }
