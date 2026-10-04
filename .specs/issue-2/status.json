@@ -5,7 +5,7 @@
   "state": "SPEC",
   "counters": {
     "reviewCycles": 0,
-    "retries": 0,
+    "retries": 1,
     "startedAt": "2026-10-04T01:00:26.806Z",
     "activeMs": 0
   },
@@ -28,7 +28,18 @@
       "to": "SPEC"
     }
   ],
-  "agentUsageLog": [],
+  "agentUsageLog": [
+    {
+      "at": "2026-10-04T01:00:38.114Z",
+      "stage": "spec",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 0,
+      "attempt": 1,
+      "outcome": "failure"
+    }
+  ],
   "createdAt": "2026-10-04T01:00:26.807Z",
-  "updatedAt": "2026-10-04T01:00:30.736Z"
+  "updatedAt": "2026-10-04T01:00:38.114Z",
+  "lastError": "El agente 'codex' no está disponible: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 10:56 PM."
 }
