@@ -2,7 +2,7 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 2,
   "branch": "nightshift/issue-2",
-  "state": "SPEC",
+  "state": "SPEC_VALIDATION",
   "counters": {
     "reviewCycles": 0,
     "retries": 1,
@@ -10,7 +10,7 @@
     "activeMs": 11290
   },
   "artifacts": {
-    "specExists": false,
+    "specExists": true,
     "specValidated": false,
     "planExists": false,
     "planValidated": false,
@@ -26,6 +26,11 @@
       "at": "2026-10-04T01:00:28.012Z",
       "from": "NEW",
       "to": "SPEC"
+    },
+    {
+      "at": "2026-10-05T01:02:11.039Z",
+      "from": "SPEC",
+      "to": "SPEC_VALIDATION"
     }
   ],
   "agentUsageLog": [
@@ -37,9 +42,21 @@
       "durationMs": 0,
       "attempt": 1,
       "outcome": "failure"
+    },
+    {
+      "at": "2026-10-05T01:02:09.011Z",
+      "stage": "spec",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 115301,
+      "attempt": 2,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 51613,
+        "outputTokens": 3227
+      }
     }
   ],
   "createdAt": "2026-10-04T01:00:26.807Z",
-  "updatedAt": "2026-10-04T01:00:39.302Z",
-  "lastError": "El agente 'codex' no está disponible: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 10:56 PM."
+  "updatedAt": "2026-10-05T01:02:14.489Z"
 }
