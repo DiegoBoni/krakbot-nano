@@ -1799,7 +1799,9 @@ static esp_err_t claw_event_router_execute_agent_action(
     agent_input.source_channel = event->source_channel;
     agent_input.source_chat_id = event->chat_id;
     agent_input.source_sender_id = event->sender_id;
-    agent_input.source_message_id = event->message_id;
+    /* A correlation id (e.g. scheduler fires, whose message_id is a fixed key) must reach the final
+     * out_message event so the terminal outcome of the agent run can be tied back to its trigger. */
+    agent_input.source_message_id = event->correlation_id[0] ? event->correlation_id : event->message_id;
     agent_input.event_id = event->event_id;
     agent_input.target_channel = (target_channel && target_channel[0]) ? target_channel : event->source_channel;
     agent_input.target_chat_id = (target_chat_id && target_chat_id[0]) ? target_chat_id : event->chat_id;

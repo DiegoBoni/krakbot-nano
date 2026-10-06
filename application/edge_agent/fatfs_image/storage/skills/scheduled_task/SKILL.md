@@ -48,11 +48,11 @@ Do not retry with changed arguments or run another script in the same turn unles
     },
     "cron_expr": {
       "type": "string",
-      "description": "Required when kind is cron. Use a 5-field cron expression: minute hour mday month wday."
+      "description": "Required when kind is cron. 5 fields (minute hour mday month wday); each field is *, */N (N > 0) or one number in range (minute 0-59, hour 0-23, mday 1-31, month 1-12, wday 0-6). Ranges, lists and names are rejected."
     },
     "interval_ms": {
       "type": "integer",
-      "description": "Required when kind is interval. Must be greater than 0."
+      "description": "Required when kind is interval. Minimum 1000 (the scheduler tick); smaller values are rejected."
     },
     "mode": {
       "type": "string",
@@ -159,6 +159,7 @@ After the script succeeds, summarize what was added: `task_id`, mode, schedule k
 ```
 
 - `at` is either a number (epoch **milliseconds** only, never seconds) or a strict local string `YYYY-MM-DDTHH:mm:ss` interpreted in the firmware time zone. No other formats are accepted.
+- Time zone resolution does not guess: the offset in force one day before and after the requested wall time is checked, and a local time that matches no real instant (DST gap) or two instants (DST overlap) is rejected. Use epoch milliseconds to pick one explicitly.
 - Rejected with an error: invalid dates, local times that do not exist (DST gap) or are ambiguous (DST overlap), instants not strictly in the future, and an unsynchronized clock (`once` and `cron` require time sync; `interval` does not).
 - `at` is only valid for `once`; `cron_expr`/`interval_ms` are rejected for `once`. A `once` task fires exactly once (`max_runs` 1) and is consumed even if delivery fails; there is no automatic retry. Persisted in the scheduler JSON/NVS like other tasks.
 - Before calling the script, resolve relative expressions ("tomorrow at 9", "in 2 hours") into an absolute `at` yourself. Ask the user if the date, time zone, or destination is missing.
@@ -171,16 +172,20 @@ After the script succeeds, summarize what was added: `task_id`, mode, schedule k
 
 ## List, pause/resume, remove
 
-- `list_scheduled_tasks.lua` shows id, kind, mode, instruction, schedule, state (`scheduled`, `paused`, `consumed`), last fire, next fire, target, and router rule status. A consumed `once` has no next fire (`none`); a never-run task shows `none (never fired)`; a missing router rule is reported as `INCONSISTENT` and is not recreated. The last result is read from `activity_log_list` (origin `scheduled_task`); the list picks the newest record per task id (`last_result`). If none exists it says so explicitly (never fired, or no terminal result recorded / dropped by retention). Clock sync for `once`/`cron` is checked with the scheduler's own `scheduler_time_status` flag, not an epoch heuristic. Removing a consumed `once` task does not pause it first (it cannot fire again).
+- `list_scheduled_tasks.lua` (optional `task_id`) shows id, kind, mode, instruction, schedule, state (`scheduled`, `paused`, `consumed`), last fire, next fire, target, router rule and `consistency`. A consumed `once` has no next fire (`none (one-shot already consumed)`); a never-run task shows `none (never fired)`. Router rule problems are reported and never repaired: `INCONSISTENT: router rule missing`, `INCONSISTENT: ... does not belong to this task` (a same-named rule that does not match this task's schedule event), or `UNKNOWN` when the router query itself failed.
+- `last_result` is read per task from `activity_log_list` (`origin=scheduled_task`, `ref=<task id>`, `limit=1`), so other tasks' newer entries cannot hide it. If the latest fire is newer than the newest log entry, the list says that no terminal result was recorded for it (still running, interrupted by a restart, or not delivered) and shows the older result separately as `previous`. Absent results are stated explicitly (never fired / removed by retention / log unavailable).
 - Pause/resume use the `scheduler_pause` / `scheduler_resume` capabilities; pausing blocks new firings but lets a running execution finish.
-- `remove_scheduled_task.lua` pauses the entry, deletes only the exclusive rule (`<task_id>_notify` or `<task_id>_run`) and the scheduler entry. On failure it restores deleted rules and the original activation and reports any resource it could not restore. Removing a task that does not exist succeeds and says it was already absent. `im_any_message_agent` and rules not created by this skill are never touched; an execution already started is not cancelled and history is kept.
+- `remove_scheduled_task.lua` (arg `task_id`) pauses the entry only if it can still fire (consumed `once`, already paused and disabled entries are left as they are), deletes the exclusive rule (`<task_id>_notify` or `<task_id>_run`) and then the scheduler entry. A rule is deleted only if it has that exact id **and** matches this task (`event_type=schedule`, `event_key=<task id>`, expected action); otherwise it is left untouched and reported as `foreign_rules_left_untouched`. On failure it restores deleted rules and resumes the entry only if it paused it, and reports every resource it could not restore (`rollback incomplete, pending: ...`). Removing a task whose resources are all absent succeeds and says it was already absent; an owned rule without a scheduler entry is cleaned up. `im_any_message_agent` is never touched; an execution already started is not cancelled and history is kept.
 - Tasks created before this version keep working. Only the exact ids `<task_id>_notify` / `<task_id>_run` are considered owned; no name-pattern guessing.
 
 ## History
 
-Each fire (automatic or `trigger_now`) is recorded in `cap_activity_log` with origin `scheduled_task` and the task id as ref; the correlation is `<task id>:<planned_ms>`.
+Each fire (automatic or `trigger_now`) is recorded in `cap_activity_log` with origin `scheduled_task` and the task id as ref; the correlation id is `sched:<task id>:<planned_ms>` (the prefix keeps IM message ids from being mistaken for scheduler fires).
 
 - Failed dispatches are logged by the scheduler as `error`. A successful publish is not logged as completed because it only means the event was queued.
 - Terminal outcomes of `send_message` (send result, not reading) and synchronous `run_script` (script exit or error) are logged as `completed` / `error` through a `claw_cap` call observer installed by the scheduler. The observer keeps no per-task state, so a run that already started still logs after its task is removed.
-- Pending: `wake_agent` and async scripts finish inside `claw_core` / a background task and are not yet logged as terminal (completed/failed) results; `claw_core` is intentionally not modified. Interrupted-by-reboot runs therefore simply have no terminal entry. Listing shows `last_result` from the newest of the latest 50 `scheduled_task` entries; older results report that they were dropped by retention or fall outside that window.
+- `wake_agent`: the router passes the correlation id to the agent request, `claw_core` copies it into the final `out_message` event, and the router's delivery of that message (a `send_message` cap call carrying the same correlation id) is logged as the terminal outcome, `completed` or `error` if delivery failed (e.g. the channel disappeared). Intermediate `agent_stage` messages carry no correlation id and are not logged. An agent run that ends without any text never reaches delivery and has no terminal entry; it is not reported as completed. `claw_core` is not modified.
+- Async scripts (`lua_run_script_async`) report only that the script started and have no completion hook; they are not logged as completed. Scheduled `run_script` rules created by this skill are always synchronous.
+- Interrupted-by-reboot runs have no terminal entry (never a false success); the listing reports "no terminal result recorded for the latest fire". Retention is the bounded policy of `cap_activity_log`; history is kept after a task is deleted.
+- No new automatic retries exist: a `once` fire is consumed even if it fails, and interval/cron simply fire at their next planned time.
 - Lookups distinguish `ESP_ERR_NOT_FOUND` from other failures: a failing scheduler/router query aborts creation or removal instead of being treated as "absent".

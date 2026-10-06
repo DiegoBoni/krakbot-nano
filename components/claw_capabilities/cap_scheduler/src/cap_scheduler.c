@@ -440,7 +440,7 @@ static esp_err_t cap_scheduler_build_payload_json(const cap_scheduler_entry_t *e
 /* Records a failed fire in the activity log. Best effort: never changes scheduler behaviour.
  * A successful publish only means the event was queued, so it is not logged as completed here;
  * the terminal outcome (send result, script exit, agent reply) belongs to the executing side and is
- * correlated through the event correlation_id "<task id>:<planned_ms>" (ref = task id). */
+ * correlated through the event correlation_id "sched:<task id>:<planned_ms>" (ref = task id). */
 static void cap_scheduler_log_activity(const cap_scheduler_entry_t *entry,
                                        esp_err_t publish_err,
                                        bool immediate,
@@ -456,8 +456,9 @@ static void cap_scheduler_log_activity(const cap_scheduler_entry_t *entry,
     snprintf(reason, sizeof(reason), "schedule %s/%s %s",
              cap_scheduler_kind_to_string_local(entry->item.kind), entry->item.id,
              immediate ? "manual" : "automatic");
-    snprintf(detail, sizeof(detail), "publish failed: %s correlation=%s:%" PRId64,
-             esp_err_to_name(publish_err), entry->item.id, planned_time_ms);
+    snprintf(detail, sizeof(detail), "publish failed: %s correlation=%s%s:%" PRId64,
+             esp_err_to_name(publish_err), CAP_SCHEDULER_CORRELATION_PREFIX, entry->item.id,
+             planned_time_ms);
     log_err = cap_activity_log_append(CAP_ACTIVITY_ORIGIN_SCHEDULED_TASK,
                                       "scheduled task fired",
                                       reason,
@@ -509,7 +510,8 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
     strlcpy(event.source_channel, entry->item.source_channel, sizeof(event.source_channel));
     strlcpy(event.chat_id, entry->item.chat_id, sizeof(event.chat_id));
     strlcpy(event.message_id, entry->item.event_key, sizeof(event.message_id));
-    snprintf(event.correlation_id, sizeof(event.correlation_id), "%s:%" PRId64, entry->item.id, planned_time_ms);
+    snprintf(event.correlation_id, sizeof(event.correlation_id), "%s%s:%" PRId64,
+             CAP_SCHEDULER_CORRELATION_PREFIX, entry->item.id, planned_time_ms);
     strlcpy(event.content_type, entry->item.content_type, sizeof(event.content_type));
     event.timestamp_ms = now_ms;
     event.text = entry->item.text[0] ? entry->item.text : NULL;

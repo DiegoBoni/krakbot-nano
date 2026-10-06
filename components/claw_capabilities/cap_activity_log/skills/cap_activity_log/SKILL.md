@@ -22,7 +22,7 @@ The activity log is a persistent, bounded history of what the bot did on its own
 - On any failure (`result=error`) with a short `detail`.
 - For user-requested actions worth tracing, use `origin=manual`.
 
-The scheduler already logs that a task *fired* (`result=completed`, `detail="event published"`). That only means the event was published, not that the work is done. Add your own entry with the final outcome and the same `ref`.
+The scheduler logs a failed dispatch as `error`; a successful publish only means the event was queued and is not logged as completed. Terminal outcomes of scheduled `send_message`, `run_script` and `wake_agent` (delivered agent reply) are logged automatically with `ref` = task id and correlation `sched:<task id>:<planned_ms>` in `detail`. Add your own entry with the final outcome only for work the automatic hooks cannot observe.
 
 ## How to fill the fields
 - `action` and `reason`: concise, one short sentence each.
@@ -34,7 +34,7 @@ The scheduler already logs that a task *fired* (`result=completed`, `detail="eve
 - Before repeating an action, to check it was not already done.
 - When the user asks what the bot has been doing.
 
-`activity_log_list` accepts `limit` (default 20, max 50), `origin` and `since_ms`. Results are newest first.
+`activity_log_list` accepts `limit` (default 20, max 50), `origin`, `ref` (exact match, applied before `limit`) and `since_ms`. Results are newest first.
 
 ## Never record
 Secrets, tokens, credentials, private messages or sensitive personal data.

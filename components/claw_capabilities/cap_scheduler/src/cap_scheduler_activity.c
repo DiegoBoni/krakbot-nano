@@ -15,10 +15,18 @@
 
 /*
  * Terminal outcomes for scheduled fires. The scheduler publishes events with correlation_id
- * "<task id>:<planned_ms>"; the router forwards it in the cap call context. When the router-executed
+ * "sched:<task id>:<planned_ms>"; the router forwards it in the cap call context. When the router-executed
  * send_message / run_script cap returns, this observer appends the real result. It keeps no state, so a
- * fire that already started still logs after its task is removed. wake_agent and async scripts finish
- * inside claw_core / a background task and are not observable here; they are not logged as completed.
+ * fire that already started still logs after its task is removed.
+ *
+ * wake_agent: the router passes the correlation id to the agent request (as source_message_id), claw_core
+ * copies it into the final out_message event, and the router delivers that event through a send_message cap
+ * call carrying the same correlation id. The delivery call is therefore the terminal outcome of the agent
+ * run (agent_stage messages carry no correlation id and are ignored). An agent run that produces no text
+ * never reaches delivery and stays unlogged rather than being reported as completed.
+ *
+ * Async scripts (lua_run_script_async) finish in a background task with no completion hook, so they are not
+ * logged as completed; scheduled run_script rules created by add_scheduled_task.lua are always synchronous.
  */
 
 #define SCHEDULER_ROUTER_SOURCE   "claw_event_router"
@@ -30,12 +38,17 @@ static const char *TAG = "cap_scheduler_act";
 
 static bool scheduler_correlation_task_id(const char *correlation, char *id, size_t id_size)
 {
+    const size_t prefix_len = strlen(CAP_SCHEDULER_CORRELATION_PREFIX);
     const char *colon;
+    const char *start;
     const char *p;
     size_t len;
 
-    if (!correlation || (colon = strrchr(correlation, ':')) == NULL || colon == correlation ||
-            colon[1] == '\0') {
+    if (!correlation || strncmp(correlation, CAP_SCHEDULER_CORRELATION_PREFIX, prefix_len) != 0) {
+        return false;
+    }
+    start = correlation + prefix_len;
+    if ((colon = strrchr(start, ':')) == NULL || colon == start || colon[1] == '\0') {
         return false;
     }
     for (p = colon + 1; *p; p++) {
@@ -43,11 +56,11 @@ static bool scheduler_correlation_task_id(const char *correlation, char *id, siz
             return false;
         }
     }
-    len = (size_t)(colon - correlation);
+    len = (size_t)(colon - start);
     if (len >= id_size) {
         return false;
     }
-    memcpy(id, correlation, len);
+    memcpy(id, start, len);
     id[len] = '\0';
     return true;
 }

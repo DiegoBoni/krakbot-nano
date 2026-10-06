@@ -29,9 +29,12 @@ local VALID_KINDS = {
 local MAX_EPOCH_MS = 9007199254740991
 -- Largest year accepted for local date strings.
 local MAX_YEAR = 9999
--- DST probing window around a local time: +-DST_PROBE_STEPS * DST_PROBE_STEP_S seconds.
-local DST_PROBE_STEP_S = 1800
-local DST_PROBE_STEPS = 4
+-- UTC offsets are sampled this far before/after the requested wall time to bracket a DST transition.
+local OFFSET_SAMPLE_S = 86400
+-- Scheduler tick (app_claw.c, cap_scheduler tick_ms = 1000): a shorter interval could never be honoured.
+local MIN_INTERVAL_MS = 1000
+-- Cron field ranges, identical to cap_scheduler_parser.c: minute hour mday month wday.
+local CRON_RANGES = { { 0, 59 }, { 0, 23 }, { 1, 31 }, { 1, 12 }, { 0, 6 } }
 -- Error text returned by capability.call for a missing resource.
 local ERR_NOT_FOUND = "ESP_ERR_NOT_FOUND"
 
@@ -57,15 +60,33 @@ local function validate_task_id(task_id)
     end
 end
 
+-- Mirrors cap_scheduler_parse_cron_field: each field is "*", "*/N" (N > 0) or one number in range.
 local function validate_cron_expr(expr)
-    local count = 0
+    local fields = {}
 
-    for _ in string.gmatch(expr, "%S+") do
-        count = count + 1
+    for token in string.gmatch(expr, "%S+") do
+        fields[#fields + 1] = token
     end
-
-    if count ~= 5 then
+    if #fields ~= 5 then
         error("args.cron_expr must be a 5-field cron expression")
+    end
+    for i, token in ipairs(fields) do
+        local lo, hi = CRON_RANGES[i][1], CRON_RANGES[i][2]
+        local step = string.match(token, "^%*/(%d+)$")
+        if token == "*" then
+            -- any value
+        elseif step then
+            if tonumber(step) <= 0 then
+                error("args.cron_expr field " .. i .. " step must be greater than 0")
+            end
+        elseif string.match(token, "^%d+$") then
+            local n = tonumber(token)
+            if n < lo or n > hi then
+                error(string.format("args.cron_expr field %d must be in %d-%d", i, lo, hi))
+            end
+        else
+            error("args.cron_expr field " .. i .. " supports only *, */N or a single number: " .. token)
+        end
     end
 end
 
@@ -102,10 +123,55 @@ local function now_ms_synced()
     return now_s * 1000
 end
 
-local function local_fields_match(t, f)
-    local d = os.date("*t", t)
-    return d.year == f.year and d.month == f.month and d.day == f.day
-        and d.hour == f.hour and d.min == f.min and d.sec == f.sec
+-- Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's days_from_civil).
+local function days_from_civil(year, month, day)
+    local y = month <= 2 and year - 1 or year
+    local era = y // 400
+    local yoe = y - era * 400
+    local mp = (month + 9) % 12
+    local doy = (153 * mp + 2) // 5 + day - 1
+    local doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+    return era * 146097 + doe - 719468
+end
+
+-- Seconds east of UTC in effect at epoch second t in the firmware time zone, or nil if os.date fails.
+local function utc_offset_at(t)
+    local ok, d = pcall(os.date, "*t", t)
+    if not ok or type(d) ~= "table" then
+        return nil
+    end
+    local wall = days_from_civil(d.year, d.month, d.day) * 86400 + d.hour * 3600 + d.min * 60 + d.sec
+    return wall - t
+end
+
+-- Resolves wall-clock seconds (the date/time read as if it were UTC) to epoch seconds in the firmware
+-- time zone. Candidates are wall - offset for the offsets in force one day before and after; a candidate
+-- is real only if that offset really applies at that instant. No real candidate = DST gap, two different
+-- ones = DST overlap. Exact for zones with at most one transition inside the +-1 day window.
+local function resolve_local_time(wall)
+    local before = utc_offset_at(wall - OFFSET_SAMPLE_S)
+    local after = utc_offset_at(wall + OFFSET_SAMPLE_S)
+    if before == nil or after == nil then
+        return nil, "convert"
+    end
+    local found = {}
+    local seen = {}
+    for _, offset in ipairs({ before, after }) do
+        if not seen[offset] then
+            seen[offset] = true
+            local t = wall - offset
+            if utc_offset_at(t) == offset then
+                found[#found + 1] = t
+            end
+        end
+    end
+    if #found == 0 then
+        return nil, "gap"
+    end
+    if #found > 1 then
+        return nil, "overlap"
+    end
+    return found[1]
 end
 
 local function days_in_month(year, month)
@@ -141,28 +207,16 @@ local function parse_at(value)
             error("args.at is not a valid calendar date/time")
         end
 
-        -- os.time normalizes nonexistent fields (DST gap) into a different wall clock, and a single
-        -- isdst hint cannot expose an overlap. Probe every instant within +-2h around the candidate
-        -- (30 min steps cover all real DST offsets) and count how many map back to exactly these fields.
-        local t0 = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
-                             min = f.min, sec = f.sec })
-        if not t0 then
+        local wall = days_from_civil(f.year, f.month, f.day) * 86400 + f.hour * 3600 + f.min * 60 + f.sec
+        local epoch_s, reason = resolve_local_time(wall)
+        if reason == "convert" then
             error("args.at cannot be converted with the firmware time zone")
-        end
-        local matches = {}
-        for step = -DST_PROBE_STEPS, DST_PROBE_STEPS do
-            local t = t0 + step * DST_PROBE_STEP_S
-            if local_fields_match(t, f) then
-                matches[#matches + 1] = t
-            end
-        end
-        if #matches == 0 then
+        elseif reason == "gap" then
             error("args.at does not exist in the firmware time zone (DST gap); choose another time")
-        end
-        if #matches > 1 then
+        elseif reason == "overlap" then
             error("args.at is ambiguous in the firmware time zone (DST overlap); choose another time or use epoch ms")
         end
-        at_ms = matches[1] * 1000
+        at_ms = epoch_s * 1000
     else
         error("args.at is required when kind is once")
     end
@@ -279,8 +333,8 @@ local function build_schedule(task_id, kind, mode, text)
         schedule.cron_expr = require_string("cron_expr")
         validate_cron_expr(schedule.cron_expr)
     elseif kind == "interval" then
-        if ctx.interval_ms <= 0 then
-            error("args.interval_ms must be greater than 0 when kind is interval")
+        if ctx.interval_ms < MIN_INTERVAL_MS then
+            error("args.interval_ms must be at least " .. MIN_INTERVAL_MS .. " (scheduler tick) when kind is interval")
         end
         schedule.interval_ms = ctx.interval_ms
     elseif kind == "once" then
@@ -408,11 +462,16 @@ local function run()
         end
 
         local message = string.format(
-            "scheduler_add failed: err=%s out=%s; rollback_ok=%s rollback=%s",
+            "scheduler_add failed: err=%s out=%s; rollback %s: %s",
             tostring(scheduler_err),
             tostring(scheduler_out),
-            tostring(rollback_ok),
+            rollback_ok and "completed" or "FAILED",
             tostring(rollback_out))
+        if not rollback_ok then
+            message = message .. string.format(
+                "; pending cleanup: router rule %s may still exist (remove it with remove_scheduled_task task_id=%s)",
+                rule.id, task_id)
+        end
         print("[scheduled_task] " .. message)
         error(message)
     end

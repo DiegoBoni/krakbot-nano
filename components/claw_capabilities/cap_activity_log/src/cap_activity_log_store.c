@@ -275,12 +275,14 @@ typedef struct {
     size_t count;
     int64_t since_ms;
     cap_activity_origin_t origin_filter;
+    const char *ref_filter;  /* NULL or empty = any ref */
 } activity_results_t;
 
 static void activity_results_push(activity_results_t *res, const activity_entry_t *e)
 {
     if (e->ts_ms < res->since_ms ||
-            (res->origin_filter != CAP_ACTIVITY_ORIGIN_MAX && e->origin != res->origin_filter)) {
+            (res->origin_filter != CAP_ACTIVITY_ORIGIN_MAX && e->origin != res->origin_filter) ||
+            (res->ref_filter && res->ref_filter[0] && strcmp(e->ref, res->ref_filter) != 0)) {
         return;
     }
     res->items[res->next] = *e;
@@ -379,6 +381,17 @@ esp_err_t cap_activity_log_list_json(size_t limit,
                                      size_t out_size,
                                      size_t *out_count)
 {
+    return cap_activity_log_list_json_ref(limit, origin_filter, NULL, since_ms, out, out_size, out_count);
+}
+
+esp_err_t cap_activity_log_list_json_ref(size_t limit,
+                                         cap_activity_origin_t origin_filter,
+                                         const char *ref_filter,
+                                         int64_t since_ms,
+                                         char *out,
+                                         size_t out_size,
+                                         size_t *out_count)
+{
     struct cap_activity_log_t *log = activity_log_instance();
     activity_results_t res = {0};
     char *line;
@@ -405,6 +418,7 @@ esp_err_t cap_activity_log_list_json(size_t limit,
     res.limit = limit;
     res.since_ms = since_ms;
     res.origin_filter = origin_filter;
+    res.ref_filter = ref_filter;
     /* One extra slot is the parse scratch entry. Temporary, <= ~30 KB. */
     res.items = malloc((limit + 1) * sizeof(activity_entry_t));
     line = malloc(ACTIVITY_LINE_MAX);

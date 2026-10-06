@@ -36,6 +36,8 @@ static esp_err_t activity_log_list_execute(const char *input_json,
     cap_activity_log_stats_t stats = {0};
     const cJSON *item;
     const char *origin_str;
+    char ref_filter[CAP_ACTIVITY_LOG_REF_MAX + 1] = {0};
+    const char *ref_str;
     size_t limit = 0;
     int64_t since_ms = 0;
     size_t count = 0;
@@ -63,13 +65,17 @@ static esp_err_t activity_log_list_execute(const char *input_json,
         cJSON_Delete(root);
         return ESP_ERR_INVALID_ARG;
     }
+    ref_str = activity_get_str(root, "ref");
+    if (ref_str) {
+        strlcpy(ref_filter, ref_str, sizeof(ref_filter));
+    }
     cJSON_Delete(root);
 
     if (output_size <= sizeof("{\"entries\":") + ACTIVITY_LIST_SUFFIX_RESERVE) {
         return ESP_ERR_INVALID_SIZE;
     }
     prefix = snprintf(output, output_size, "{\"entries\":");
-    err = cap_activity_log_list_json(limit, origin, since_ms, output + prefix,
+    err = cap_activity_log_list_json_ref(limit, origin, ref_filter, since_ms, output + prefix,
                                      output_size - prefix - ACTIVITY_LIST_SUFFIX_RESERVE, &count);
     if (err == ESP_ERR_INVALID_STATE) {
         return activity_fail(output, output_size, err, "activity log not available");
@@ -152,6 +158,7 @@ static const claw_cap_descriptor_t s_activity_log_descriptors[] = {
         "{\"type\":\"object\",\"properties\":{"
         "\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":50,\"description\":\"Max entries (default 20)\"},"
         "\"origin\":{\"type\":\"string\",\"enum\":[\"proactive_pulse\",\"scheduled_task\",\"manual\"]},"
+        "\"ref\":{\"type\":\"string\",\"description\":\"Only entries with this exact ref (e.g. a task id); applied before limit\"},"
         "\"since_ms\":{\"type\":\"integer\",\"description\":\"Only entries with ts >= since_ms (epoch ms)\"}}}",
         .execute = activity_log_list_execute,
     },
