@@ -22,7 +22,15 @@ local VALID_MODES = {
 local VALID_KINDS = {
     cron = true,
     interval = true,
+    once = true,
 }
+
+-- Epoch values below this are treated as "clock not synchronized" (2020-01-01 UTC, in ms).
+local MIN_SYNCED_EPOCH_MS = 1577836800000
+-- Largest epoch in ms that a Lua double represents exactly.
+local MAX_EPOCH_MS = 9007199254740991
+-- Largest year accepted for local date strings.
+local MAX_YEAR = 9999
 
 local function raw_string(key)
     local value = raw_args[key]
@@ -70,6 +78,80 @@ local function validate_script_path(path)
     end
 end
 
+
+local function now_ms_synced()
+    local now_s = os.time()
+    if type(now_s) ~= "number" or now_s * 1000 < MIN_SYNCED_EPOCH_MS then
+        error("system clock is not synchronized; sync time before creating cron or once tasks")
+    end
+    return now_s * 1000
+end
+
+local function local_fields_match(t, f)
+    local d = os.date("*t", t)
+    return d.year == f.year and d.month == f.month and d.day == f.day
+        and d.hour == f.hour and d.min == f.min and d.sec == f.sec
+end
+
+local function days_in_month(year, month)
+    local days = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    if month == 2 and (year % 4 == 0 and (year % 100 ~= 0 or year % 400 == 0)) then
+        return 29
+    end
+    return days[month]
+end
+
+-- Returns epoch ms for args.at: a number is epoch in ms; a string must be YYYY-MM-DDTHH:mm:ss
+-- in the firmware time zone. Ambiguous or nonexistent local times are rejected.
+local function parse_at(value)
+    local at_ms
+
+    if type(value) == "number" then
+        if value ~= math.floor(value) or value <= 0 or value > MAX_EPOCH_MS then
+            error("args.at epoch must be a positive integer in milliseconds")
+        end
+        at_ms = value
+    elseif type(value) == "string" then
+        local y, mo, d, h, mi, sec = string.match(value, "^(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)$")
+        if not y then
+            error("args.at must be epoch milliseconds or local time YYYY-MM-DDTHH:mm:ss")
+        end
+        local f = {
+            year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+            hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec),
+        }
+        if f.year < 1970 or f.year > MAX_YEAR or f.month < 1 or f.month > 12
+            or f.day < 1 or f.day > days_in_month(f.year, f.month)
+            or f.hour > 23 or f.min > 59 or f.sec > 59 then
+            error("args.at is not a valid calendar date/time")
+        end
+
+        local t_dst = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
+                                min = f.min, sec = f.sec, isdst = true })
+        local t_std = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
+                                min = f.min, sec = f.sec, isdst = false })
+        if not t_dst or not t_std then
+            error("args.at cannot be converted with the firmware time zone")
+        end
+        local ok_dst = local_fields_match(t_dst, f)
+        local ok_std = local_fields_match(t_std, f)
+        if not ok_dst and not ok_std then
+            error("args.at does not exist in the firmware time zone (DST gap); choose another time")
+        end
+        if ok_dst and ok_std and t_dst ~= t_std then
+            error("args.at is ambiguous in the firmware time zone (DST overlap); choose another time or use epoch ms")
+        end
+        at_ms = (ok_std and t_std or t_dst) * 1000
+    else
+        error("args.at is required when kind is once")
+    end
+
+    if at_ms <= now_ms_synced() then
+        error("args.at must be strictly in the future")
+    end
+    return at_ms
+end
+
 local function cap_call_required(name, payload, label)
     local ok, out, err = capability.call(name, payload, {
         source_cap = "scheduled_task",
@@ -100,6 +182,38 @@ local function cap_call_best_effort(name, payload, label)
     end
 
     return false, string.format("%s failed: err=%s out=%s", label, tostring(err), tostring(out))
+end
+
+local function validate_kind_params(kind)
+    if kind ~= "once" and raw_args.at ~= nil then
+        error("args.at is only valid when kind is once")
+    end
+    if kind == "once" then
+        if raw_string("cron_expr") ~= "" or ctx.interval_ms ~= 0 then
+            error("args.cron_expr and args.interval_ms are not valid when kind is once")
+        end
+        if ctx.trigger_count > 1 or ctx.max_runs > 1 then
+            error("args.trigger_count/max_runs must be 0 or 1 when kind is once")
+        end
+    end
+end
+
+local function validate_destination()
+    if raw_string("chat_channel") == "" or raw_string("chat_id") == "" then
+        error("chat_channel and chat_id are required: configure an IM channel and provide chat_id "
+            .. "(local/web conversations cannot receive scheduled messages)")
+    end
+    if raw_string("chat_channel") == "local" or raw_string("chat_channel") == "web" then
+        error("args.chat_channel must be an IM channel; local/web is not supported. Configure IM and provide chat_id")
+    end
+end
+
+local function cap_exists(name, payload)
+    local ok = capability.call(name, payload, {
+        source_cap = "scheduled_task",
+        max_output_bytes = 8192,
+    })
+    return ok and true or false
 end
 
 local function build_schedule(task_id, kind, mode, text)
@@ -140,8 +254,11 @@ local function build_schedule(task_id, kind, mode, text)
             error("args.interval_ms must be greater than 0 when kind is interval")
         end
         schedule.interval_ms = ctx.interval_ms
+    elseif kind == "once" then
+        schedule.start_at_ms = parse_at(raw_args.at)
+        schedule.max_runs = 1
     else
-        error("args.kind must be cron or interval")
+        error("args.kind must be cron, interval, or once")
     end
 
     return schedule
@@ -204,7 +321,14 @@ local function run()
     validate_task_id(task_id)
 
     if not VALID_KINDS[kind] then
-        error("args.kind must be cron or interval")
+        error("args.kind must be cron, interval, or once")
+    end
+    validate_kind_params(kind)
+    if kind == "cron" then
+        now_ms_synced()
+    end
+    if (mode == "wake_agent" or mode == "send_message") then
+        validate_destination()
     end
     if not VALID_MODES[mode] then
         error("args.mode must be wake_agent, send_message, or run_script")
@@ -217,6 +341,17 @@ local function run()
     end
 
     schedule = build_schedule(task_id, kind, mode, text)
+
+    -- Duplicate checks run before any resource is created; existing entries are never overwritten.
+    if cap_exists("scheduler_get", { id = task_id }) then
+        error("scheduler entry already exists for task_id=" .. task_id)
+    end
+    if mode ~= "wake_agent" then
+        local rule_id = task_id .. (mode == "send_message" and "_notify" or "_run")
+        if cap_exists("get_router_rule", { id = rule_id }) then
+            error("router rule already exists: " .. rule_id)
+        end
+    end
 
     if mode ~= "wake_agent" then
         rule = build_router_rule(task_id, mode, text)

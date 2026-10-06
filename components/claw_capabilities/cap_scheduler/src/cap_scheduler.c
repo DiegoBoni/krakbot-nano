@@ -509,9 +509,11 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
         entry->run_count++;
     }
 
-    if (publish_err == ESP_OK && entry->item.kind == CAP_SCHEDULER_ITEM_ONCE) {
+    if (entry->item.kind == CAP_SCHEDULER_ITEM_ONCE) {
+        /* A one-shot run is consumed even when publishing fails: no automatic retry. */
         entry->next_fire_ms = -1;
-        entry->status = CAP_SCHEDULER_STATUS_COMPLETED;
+        entry->status = publish_err == ESP_OK ? CAP_SCHEDULER_STATUS_COMPLETED
+                        : CAP_SCHEDULER_STATUS_ERROR;
     } else if (publish_err == ESP_OK && entry->status != CAP_SCHEDULER_STATUS_PAUSED) {
         if (!immediate) {
             err = cap_scheduler_refresh_entry_locked(entry, planned_time_ms);
