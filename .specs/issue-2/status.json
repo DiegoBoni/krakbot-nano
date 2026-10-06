@@ -2,7 +2,7 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 2,
   "branch": "nightshift/issue-2",
-  "state": "FIXING",
+  "state": "NEEDS_HUMAN",
   "counters": {
     "reviewCycles": 4,
     "retries": 2,
@@ -105,6 +105,12 @@
       "from": "AI_REVIEW",
       "to": "FIXING",
       "reason": "Hay avances (once, borrado, listado, filtro por ref), pero persisten problemas bloqueantes: el historial de #4 no cubre un resultado terminal fiable para wake_agent ni registra el inicio del disparo, el observer único de claw_cap se pisa al detenerse el scheduler, la conversión horaria por sondeo no está validada en firmware, se cambia el comportamiento de tareas once existentes ante fallos, no se valida disponibilidad real del canal IM y faltan pruebas de C exigidas por el spec."
+    },
+    {
+      "at": "2026-10-06T01:17:02.588Z",
+      "from": "FIXING",
+      "to": "NEEDS_HUMAN",
+      "reason": "Se superaron los ciclos de review permitidos (4/3)"
     }
   ],
   "agentUsageLog": [
@@ -297,7 +303,7 @@
     }
   ],
   "createdAt": "2026-10-04T01:00:26.807Z",
-  "updatedAt": "2026-10-06T01:17:01.462Z",
+  "updatedAt": "2026-10-06T01:17:06.239Z",
   "prNumber": 9,
-  "lastError": "Hay avances (once, borrado, listado, filtro por ref), pero persisten problemas bloqueantes: el historial de #4 no cubre un resultado terminal fiable para wake_agent ni registra el inicio del disparo, el observer único de claw_cap se pisa al detenerse el scheduler, la conversión horaria por sondeo no está validada en firmware, se cambia el comportamiento de tareas once existentes ante fallos, no se valida disponibilidad real del canal IM y faltan pruebas de C exigidas por el spec."
+  "lastError": "Se superaron los ciclos de review permitidos (4/3)"
 }
