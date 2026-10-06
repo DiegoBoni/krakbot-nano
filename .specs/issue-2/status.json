@@ -1,0 +1,309 @@
+{
+  "repo": "DiegoBoni/krakbot-nano",
+  "issueNumber": 2,
+  "branch": "nightshift/issue-2",
+  "state": "NEEDS_HUMAN",
+  "counters": {
+    "reviewCycles": 4,
+    "retries": 2,
+    "startedAt": "2026-10-04T01:00:26.806Z",
+    "activeMs": 3230424
+  },
+  "artifacts": {
+    "specExists": true,
+    "specValidated": true,
+    "planExists": true,
+    "planValidated": true,
+    "tasksExists": true,
+    "implementationComplete": true,
+    "requiredTestsPassed": true,
+    "prExists": true,
+    "aiReviewComplete": false,
+    "blockingFindings": 6
+  },
+  "history": [
+    {
+      "at": "2026-10-04T01:00:28.012Z",
+      "from": "NEW",
+      "to": "SPEC"
+    },
+    {
+      "at": "2026-10-05T01:02:11.039Z",
+      "from": "SPEC",
+      "to": "SPEC_VALIDATION"
+    },
+    {
+      "at": "2026-10-05T01:02:25.215Z",
+      "from": "SPEC_VALIDATION",
+      "to": "PLANNING"
+    },
+    {
+      "at": "2026-10-05T01:04:11.584Z",
+      "from": "PLANNING",
+      "to": "PLAN_VALIDATION"
+    },
+    {
+      "at": "2026-10-05T01:04:23.503Z",
+      "from": "PLAN_VALIDATION",
+      "to": "TASKS"
+    },
+    {
+      "at": "2026-10-05T01:06:26.684Z",
+      "from": "TASKS",
+      "to": "IMPLEMENTING"
+    },
+    {
+      "at": "2026-10-06T01:02:00.567Z",
+      "from": "IMPLEMENTING",
+      "to": "TESTING"
+    },
+    {
+      "at": "2026-10-06T01:02:05.736Z",
+      "from": "TESTING",
+      "to": "PR_OPEN"
+    },
+    {
+      "at": "2026-10-06T01:02:12.788Z",
+      "from": "PR_OPEN",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:02:49.309Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "El PR agrega once, borrado y listado en Lua, y el cambio en C consume la ejecución única ante fallo. Quedan sin cumplir condiciones obligatorias: no hay pruebas, el historial no tiene correlación terminal (#4), y la detección de reloj usa un umbral arbitrario que el spec prohíbe. El borrado y el listado además tienen casos límite con tareas consumidas y resultados por tarea."
+    },
+    {
+      "at": "2026-10-06T01:04:27.187Z",
+      "from": "FIXING",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:04:53.927Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "Se solicitan cambios: hay problemas bloqueantes de corrección, como la detección de horarios ambiguos, tratar cualquier error como ausencia en duplicados y borrado, y un listado de resultados poco fiable. Además la integración de historial con #4 está incompleta y la cobertura de pruebas es insuficiente respecto al spec."
+    },
+    {
+      "at": "2026-10-06T01:07:32.190Z",
+      "from": "FIXING",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:07:59.999Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "Se solicitan cambios. Hay problemas bloqueantes: la detección de DST por sondeo es poco fiable y sin pruebas, el borrado de tareas consumidas y su rollback tienen casos límite sin resolver, el listado de resultados por tarea es poco confiable, la integración de historial con #4 está incompleta para wake_agent y scripts asíncronos, y la cobertura de pruebas es insuficiente respecto al spec."
+    },
+    {
+      "at": "2026-10-06T01:16:30.252Z",
+      "from": "FIXING",
+      "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:16:57.701Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "Hay avances (once, borrado, listado, filtro por ref), pero persisten problemas bloqueantes: el historial de #4 no cubre un resultado terminal fiable para wake_agent ni registra el inicio del disparo, el observer único de claw_cap se pisa al detenerse el scheduler, la conversión horaria por sondeo no está validada en firmware, se cambia el comportamiento de tareas once existentes ante fallos, no se valida disponibilidad real del canal IM y faltan pruebas de C exigidas por el spec."
+    },
+    {
+      "at": "2026-10-06T01:17:02.588Z",
+      "from": "FIXING",
+      "to": "NEEDS_HUMAN",
+      "reason": "Se superaron los ciclos de review permitidos (4/3)"
+    }
+  ],
+  "agentUsageLog": [
+    {
+      "at": "2026-10-04T01:00:38.114Z",
+      "stage": "spec",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 0,
+      "attempt": 1,
+      "outcome": "failure"
+    },
+    {
+      "at": "2026-10-05T01:02:09.011Z",
+      "stage": "spec",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 115301,
+      "attempt": 2,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 51613,
+        "outputTokens": 3227
+      }
+    },
+    {
+      "at": "2026-10-05T01:02:25.214Z",
+      "stage": "spec",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 9114,
+      "attempt": 2,
+      "outcome": "success"
+    },
+    {
+      "at": "2026-10-05T01:04:10.008Z",
+      "stage": "plan",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 99410,
+      "attempt": 2,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 17302,
+        "outputTokens": 3171
+      }
+    },
+    {
+      "at": "2026-10-05T01:04:23.503Z",
+      "stage": "plan",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 6868,
+      "attempt": 2,
+      "outcome": "success"
+    },
+    {
+      "at": "2026-10-05T01:06:25.016Z",
+      "stage": "tasks",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 115837,
+      "attempt": 2,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 17392,
+        "outputTokens": 3621
+      }
+    },
+    {
+      "at": "2026-10-05T01:36:59.317Z",
+      "stage": "implementation",
+      "agent": "codex",
+      "model": "codex-default",
+      "durationMs": 0,
+      "attempt": 2,
+      "outcome": "timeout"
+    },
+    {
+      "at": "2026-10-06T01:02:00.566Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 104940,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 26,
+        "outputTokens": 12478,
+        "costUsd": 0.6147009999999999
+      }
+    },
+    {
+      "at": "2026-10-06T01:02:48.442Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 30052,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2872,
+        "costUsd": 0.1949084
+      }
+    },
+    {
+      "at": "2026-10-06T01:04:27.186Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 91290,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 30,
+        "outputTokens": 10484,
+        "costUsd": 0.654011
+      }
+    },
+    {
+      "at": "2026-10-06T01:04:53.124Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 19776,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2308,
+        "costUsd": 0.17920060000000002
+      }
+    },
+    {
+      "at": "2026-10-06T01:07:32.189Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 152206,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 54,
+        "outputTokens": 17358,
+        "costUsd": 1.0206574
+      }
+    },
+    {
+      "at": "2026-10-06T01:07:59.103Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 20302,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2304,
+        "costUsd": 0.2063446
+      }
+    },
+    {
+      "at": "2026-10-06T01:16:30.251Z",
+      "stage": "implementation",
+      "agent": "claude-implementer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 503196,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 92,
+        "outputTokens": 59294,
+        "costUsd": 2.3651278
+      }
+    },
+    {
+      "at": "2026-10-06T01:16:56.755Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 20123,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2197,
+        "costUsd": 0.2835546
+      }
+    }
+  ],
+  "createdAt": "2026-10-04T01:00:26.807Z",
+  "updatedAt": "2026-10-06T01:17:07.317Z",
+  "prNumber": 9,
+  "lastError": "Se superaron los ciclos de review permitidos (4/3)"
+}

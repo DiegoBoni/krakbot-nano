@@ -22,7 +22,21 @@ local VALID_MODES = {
 local VALID_KINDS = {
     cron = true,
     interval = true,
+    once = true,
 }
+
+-- Largest epoch in ms that a Lua double represents exactly.
+local MAX_EPOCH_MS = 9007199254740991
+-- Largest year accepted for local date strings.
+local MAX_YEAR = 9999
+-- UTC offsets are sampled this far before/after the requested wall time to bracket a DST transition.
+local OFFSET_SAMPLE_S = 86400
+-- Scheduler tick (app_claw.c, cap_scheduler tick_ms = 1000): a shorter interval could never be honoured.
+local MIN_INTERVAL_MS = 1000
+-- Cron field ranges, identical to cap_scheduler_parser.c: minute hour mday month wday.
+local CRON_RANGES = { { 0, 59 }, { 0, 23 }, { 1, 31 }, { 1, 12 }, { 0, 6 } }
+-- Error text returned by capability.call for a missing resource.
+local ERR_NOT_FOUND = "ESP_ERR_NOT_FOUND"
 
 local function raw_string(key)
     local value = raw_args[key]
@@ -46,15 +60,33 @@ local function validate_task_id(task_id)
     end
 end
 
+-- Mirrors cap_scheduler_parse_cron_field: each field is "*", "*/N" (N > 0) or one number in range.
 local function validate_cron_expr(expr)
-    local count = 0
+    local fields = {}
 
-    for _ in string.gmatch(expr, "%S+") do
-        count = count + 1
+    for token in string.gmatch(expr, "%S+") do
+        fields[#fields + 1] = token
     end
-
-    if count ~= 5 then
+    if #fields ~= 5 then
         error("args.cron_expr must be a 5-field cron expression")
+    end
+    for i, token in ipairs(fields) do
+        local lo, hi = CRON_RANGES[i][1], CRON_RANGES[i][2]
+        local step = string.match(token, "^%*/(%d+)$")
+        if token == "*" then
+            -- any value
+        elseif step then
+            if tonumber(step) <= 0 then
+                error("args.cron_expr field " .. i .. " step must be greater than 0")
+            end
+        elseif string.match(token, "^%d+$") then
+            local n = tonumber(token)
+            if n < lo or n > hi then
+                error(string.format("args.cron_expr field %d must be in %d-%d", i, lo, hi))
+            end
+        else
+            error("args.cron_expr field " .. i .. " supports only *, */N or a single number: " .. token)
+        end
     end
 end
 
@@ -68,6 +100,131 @@ local function validate_script_path(path)
     if not string.match(path, "%.lua$") then
         error("args.script_path must end with .lua")
     end
+end
+
+
+-- Clock sync is the scheduler's own flag (set when SNTP sync completes), not an epoch heuristic.
+local function now_ms_synced()
+    local ok, out = capability.call("scheduler_time_status", {}, {
+        source_cap = "scheduled_task",
+        max_output_bytes = 512,
+    })
+    local status = ok and json.decode(out) or nil
+    if type(status) ~= "table" then
+        error("cannot determine clock state: scheduler_time_status unavailable")
+    end
+    if status.time_valid ~= true then
+        error("system clock is not synchronized; sync time before creating cron or once tasks")
+    end
+    local now_s = os.time()
+    if type(now_s) ~= "number" then
+        error("system clock is unavailable")
+    end
+    return now_s * 1000
+end
+
+-- Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's days_from_civil).
+local function days_from_civil(year, month, day)
+    local y = month <= 2 and year - 1 or year
+    local era = y // 400
+    local yoe = y - era * 400
+    local mp = (month + 9) % 12
+    local doy = (153 * mp + 2) // 5 + day - 1
+    local doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+    return era * 146097 + doe - 719468
+end
+
+-- Seconds east of UTC in effect at epoch second t in the firmware time zone, or nil if os.date fails.
+local function utc_offset_at(t)
+    local ok, d = pcall(os.date, "*t", t)
+    if not ok or type(d) ~= "table" then
+        return nil
+    end
+    local wall = days_from_civil(d.year, d.month, d.day) * 86400 + d.hour * 3600 + d.min * 60 + d.sec
+    return wall - t
+end
+
+-- Resolves wall-clock seconds (the date/time read as if it were UTC) to epoch seconds in the firmware
+-- time zone. Candidates are wall - offset for the offsets in force one day before and after; a candidate
+-- is real only if that offset really applies at that instant. No real candidate = DST gap, two different
+-- ones = DST overlap. Exact for zones with at most one transition inside the +-1 day window.
+local function resolve_local_time(wall)
+    local before = utc_offset_at(wall - OFFSET_SAMPLE_S)
+    local after = utc_offset_at(wall + OFFSET_SAMPLE_S)
+    if before == nil or after == nil then
+        return nil, "convert"
+    end
+    local found = {}
+    local seen = {}
+    for _, offset in ipairs({ before, after }) do
+        if not seen[offset] then
+            seen[offset] = true
+            local t = wall - offset
+            if utc_offset_at(t) == offset then
+                found[#found + 1] = t
+            end
+        end
+    end
+    if #found == 0 then
+        return nil, "gap"
+    end
+    if #found > 1 then
+        return nil, "overlap"
+    end
+    return found[1]
+end
+
+local function days_in_month(year, month)
+    local days = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    if month == 2 and (year % 4 == 0 and (year % 100 ~= 0 or year % 400 == 0)) then
+        return 29
+    end
+    return days[month]
+end
+
+-- Returns epoch ms for args.at: a number is epoch in ms; a string must be YYYY-MM-DDTHH:mm:ss
+-- in the firmware time zone. Ambiguous or nonexistent local times are rejected.
+local function parse_at(value)
+    local at_ms
+
+    if type(value) == "number" then
+        if value ~= math.floor(value) or value <= 0 or value > MAX_EPOCH_MS then
+            error("args.at epoch must be a positive integer in milliseconds")
+        end
+        at_ms = value
+    elseif type(value) == "string" then
+        local y, mo, d, h, mi, sec = string.match(value, "^(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)$")
+        if not y then
+            error("args.at must be epoch milliseconds or local time YYYY-MM-DDTHH:mm:ss")
+        end
+        local f = {
+            year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+            hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec),
+        }
+        if f.year < 1970 or f.year > MAX_YEAR or f.month < 1 or f.month > 12
+            or f.day < 1 or f.day > days_in_month(f.year, f.month)
+            or f.hour > 23 or f.min > 59 or f.sec > 59 then
+            error("args.at is not a valid calendar date/time")
+        end
+
+        local wall = days_from_civil(f.year, f.month, f.day) * 86400 + f.hour * 3600 + f.min * 60 + f.sec
+        local epoch_s, reason = resolve_local_time(wall)
+        if reason == "convert" then
+            error("args.at cannot be converted with the firmware time zone")
+        elseif reason == "gap" then
+            error("args.at does not exist in the firmware time zone (DST gap); choose another time")
+        elseif reason == "overlap" then
+            error("args.at is ambiguous in the firmware time zone (DST overlap); choose another time or use epoch ms")
+        end
+        at_ms = epoch_s * 1000
+    else
+        error("args.at is required when kind is once")
+    end
+
+    if at_ms <= now_ms_synced() then
+        error("args.at must be strictly in the future")
+    end
+    return at_ms
 end
 
 local function cap_call_required(name, payload, label)
@@ -100,6 +257,46 @@ local function cap_call_best_effort(name, payload, label)
     end
 
     return false, string.format("%s failed: err=%s out=%s", label, tostring(err), tostring(out))
+end
+
+local function validate_kind_params(kind)
+    if kind ~= "once" and raw_args.at ~= nil then
+        error("args.at is only valid when kind is once")
+    end
+    if kind == "once" then
+        if raw_string("cron_expr") ~= "" or ctx.interval_ms ~= 0 then
+            error("args.cron_expr and args.interval_ms are not valid when kind is once")
+        end
+        if ctx.trigger_count > 1 or ctx.max_runs > 1 then
+            error("args.trigger_count/max_runs must be 0 or 1 when kind is once")
+        end
+    end
+end
+
+local function validate_destination()
+    if raw_string("chat_channel") == "" or raw_string("chat_id") == "" then
+        error("chat_channel and chat_id are required: configure an IM channel and provide chat_id "
+            .. "(local/web conversations cannot receive scheduled messages)")
+    end
+    if raw_string("chat_channel") == "local" or raw_string("chat_channel") == "web" then
+        error("args.chat_channel must be an IM channel; local/web is not supported. Configure IM and provide chat_id")
+    end
+end
+
+-- True if the resource exists, false only on NOT_FOUND. Any other failure aborts: an unreadable
+-- router/scheduler must not be mistaken for "no duplicate".
+local function cap_exists(name, payload)
+    local ok, out, err = capability.call(name, payload, {
+        source_cap = "scheduled_task",
+        max_output_bytes = 8192,
+    })
+    if ok then
+        return true
+    end
+    if err == ERR_NOT_FOUND then
+        return false
+    end
+    error(string.format("duplicate check %s failed: err=%s out=%s", name, tostring(err), tostring(out)))
 end
 
 local function build_schedule(task_id, kind, mode, text)
@@ -136,12 +333,15 @@ local function build_schedule(task_id, kind, mode, text)
         schedule.cron_expr = require_string("cron_expr")
         validate_cron_expr(schedule.cron_expr)
     elseif kind == "interval" then
-        if ctx.interval_ms <= 0 then
-            error("args.interval_ms must be greater than 0 when kind is interval")
+        if ctx.interval_ms < MIN_INTERVAL_MS then
+            error("args.interval_ms must be at least " .. MIN_INTERVAL_MS .. " (scheduler tick) when kind is interval")
         end
         schedule.interval_ms = ctx.interval_ms
+    elseif kind == "once" then
+        schedule.start_at_ms = parse_at(raw_args.at)
+        schedule.max_runs = 1
     else
-        error("args.kind must be cron or interval")
+        error("args.kind must be cron, interval, or once")
     end
 
     return schedule
@@ -204,7 +404,14 @@ local function run()
     validate_task_id(task_id)
 
     if not VALID_KINDS[kind] then
-        error("args.kind must be cron or interval")
+        error("args.kind must be cron, interval, or once")
+    end
+    validate_kind_params(kind)
+    if kind == "cron" then
+        now_ms_synced()
+    end
+    if (mode == "wake_agent" or mode == "send_message") then
+        validate_destination()
     end
     if not VALID_MODES[mode] then
         error("args.mode must be wake_agent, send_message, or run_script")
@@ -217,6 +424,17 @@ local function run()
     end
 
     schedule = build_schedule(task_id, kind, mode, text)
+
+    -- Duplicate checks run before any resource is created; existing entries are never overwritten.
+    if cap_exists("scheduler_get", { id = task_id }) then
+        error("scheduler entry already exists for task_id=" .. task_id)
+    end
+    if mode ~= "wake_agent" then
+        local rule_id = task_id .. (mode == "send_message" and "_notify" or "_run")
+        if cap_exists("get_router_rule", { id = rule_id }) then
+            error("router rule already exists: " .. rule_id)
+        end
+    end
 
     if mode ~= "wake_agent" then
         rule = build_router_rule(task_id, mode, text)
@@ -244,11 +462,16 @@ local function run()
         end
 
         local message = string.format(
-            "scheduler_add failed: err=%s out=%s; rollback_ok=%s rollback=%s",
+            "scheduler_add failed: err=%s out=%s; rollback %s: %s",
             tostring(scheduler_err),
             tostring(scheduler_out),
-            tostring(rollback_ok),
+            rollback_ok and "completed" or "FAILED",
             tostring(rollback_out))
+        if not rollback_ok then
+            message = message .. string.format(
+                "; pending cleanup: router rule %s may still exist (remove it with remove_scheduled_task task_id=%s)",
+                rule.id, task_id)
+        end
         print("[scheduled_task] " .. message)
         error(message)
     end

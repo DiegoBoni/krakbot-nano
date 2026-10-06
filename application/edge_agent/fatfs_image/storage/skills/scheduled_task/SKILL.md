@@ -1,12 +1,13 @@
 ---
 {
   "name": "scheduled_task",
-  "description": "Add timer-based scheduled tasks, periodic reminders, scheduled agent wake-ups, fixed IM messages, or scheduled Lua script runs. Prefer to use this skill rather than calling scheduler_add and add_router_rule directly.",
+  "description": "Add, list, pause/resume, or remove timer-based scheduled tasks (cron, interval, one-shot), periodic reminders, scheduled agent wake-ups, fixed IM messages, or scheduled Lua script runs. Prefer to use this skill rather than calling scheduler_add and add_router_rule directly.",
   "metadata": {
     "cap_groups": [
       "cap_lua",
       "cap_scheduler",
-      "cap_router_mgr"
+      "cap_router_mgr",
+      "cap_activity_log"
     ],
     "manage_mode": "readonly"
   }
@@ -23,6 +24,8 @@ Run exactly one bundled Lua script with `lua_run_script`:
 {"path":"{CUR_SKILL_DIR}/scripts/add_scheduled_task.lua","args":{},"timeout_ms":60000}
 ```
 
+Other bundled scripts (same invocation pattern): `scripts/list_scheduled_tasks.lua` (args: optional `task_id`), `scripts/remove_scheduled_task.lua` (args: `task_id`).
+
 If script execution returns an error, report that error directly to the user.
 Do not retry with changed arguments or run another script in the same turn unless the user explicitly asks.
 
@@ -38,15 +41,18 @@ Do not retry with changed arguments or run another script in the same turn unles
     },
     "kind": {
       "type": "string",
-      "enum": ["cron", "interval"]
+      "enum": ["cron", "interval", "once"]
+    },
+    "at": {
+      "description": "Required when kind is once, invalid otherwise. Either epoch milliseconds (number) or a local date-time string YYYY-MM-DDTHH:mm:ss in the firmware time zone. Must be strictly in the future."
     },
     "cron_expr": {
       "type": "string",
-      "description": "Required when kind is cron. Use a 5-field cron expression: minute hour mday month wday."
+      "description": "Required when kind is cron. 5 fields (minute hour mday month wday); each field is *, */N (N > 0) or one number in range (minute 0-59, hour 0-23, mday 1-31, month 1-12, wday 0-6). Ranges, lists and names are rejected."
     },
     "interval_ms": {
       "type": "integer",
-      "description": "Required when kind is interval. Must be greater than 0."
+      "description": "Required when kind is interval. Minimum 1000 (the scheduler tick); smaller values are rejected."
     },
     "mode": {
       "type": "string",
@@ -145,3 +151,41 @@ After the script succeeds, summarize what was added: `task_id`, mode, schedule k
 5. Tell the user the execution strategy and trigger count before making changes.
 6. Run `{CUR_SKILL_DIR}/scripts/add_scheduled_task.lua` with `lua_run_script` and `timeout_ms: 60000`.
 7. Report the script result or error directly to the user, including the created scheduler and router behavior.
+
+## One-shot tasks (`kind: once`)
+
+```json
+{"path":"{CUR_SKILL_DIR}/scripts/add_scheduled_task.lua","args":{"task_id":"call_mom","kind":"once","at":"2026-12-24T18:30:00","mode":"send_message","text":"Call mom","chat_channel":"telegram","chat_id":"12345"},"timeout_ms":60000}
+```
+
+- `at` is either a number (epoch **milliseconds** only, never seconds) or a strict local string `YYYY-MM-DDTHH:mm:ss` interpreted in the firmware time zone. No other formats are accepted.
+- Time zone resolution does not guess: the offset in force one day before and after the requested wall time is checked, and a local time that matches no real instant (DST gap) or two instants (DST overlap) is rejected. Use epoch milliseconds to pick one explicitly.
+- Rejected with an error: invalid dates, local times that do not exist (DST gap) or are ambiguous (DST overlap), instants not strictly in the future, and an unsynchronized clock (`once` and `cron` require time sync; `interval` does not).
+- `at` is only valid for `once`; `cron_expr`/`interval_ms` are rejected for `once`. A `once` task fires exactly once (`max_runs` 1) and is consumed even if delivery fails; there is no automatic retry. Persisted in the scheduler JSON/NVS like other tasks.
+- Before calling the script, resolve relative expressions ("tomorrow at 9", "in 2 hours") into an absolute `at` yourself. Ask the user if the date, time zone, or destination is missing.
+
+## Destination rules
+
+- `send_message` and `wake_agent` need an IM `chat_channel` (not local/web) and `chat_id`. Reuse the current conversation destination only when it is an IM chat with a known `chat_id`; otherwise ask the user to configure IM and provide `chat_id`.
+- `run_script` does not need an IM destination unless the script itself delivers messages.
+- Creation validates everything first and refuses duplicates (scheduler id or router rule id) without overwriting. If scheduler creation fails after the router rule was created, the rule is rolled back; if rollback also fails the error lists what is left behind.
+
+## List, pause/resume, remove
+
+- `list_scheduled_tasks.lua` (optional `task_id`) shows id, kind, mode, instruction, schedule, state (`scheduled`, `paused`, `consumed`), last fire, next fire, target, router rule and `consistency`. A consumed `once` has no next fire (`none (one-shot already consumed)`); a never-run task shows `none (never fired)`. Router rule problems are reported and never repaired: `INCONSISTENT: router rule missing`, `INCONSISTENT: ... does not belong to this task` (a same-named rule that does not match this task's schedule event), or `UNKNOWN` when the router query itself failed.
+- `last_result` is read per task from `activity_log_list` (`origin=scheduled_task`, `ref=<task id>`, `limit=1`), so other tasks' newer entries cannot hide it. If the latest fire is newer than the newest log entry, the list says that no terminal result was recorded for it (still running, interrupted by a restart, or not delivered) and shows the older result separately as `previous`. Absent results are stated explicitly (never fired / removed by retention / log unavailable).
+- Pause/resume use the `scheduler_pause` / `scheduler_resume` capabilities; pausing blocks new firings but lets a running execution finish.
+- `remove_scheduled_task.lua` (arg `task_id`) pauses the entry only if it can still fire (consumed `once`, already paused and disabled entries are left as they are), deletes the exclusive rule (`<task_id>_notify` or `<task_id>_run`) and then the scheduler entry. A rule is deleted only if it has that exact id **and** matches this task (`event_type=schedule`, `event_key=<task id>`, expected action); otherwise it is left untouched and reported as `foreign_rules_left_untouched`. On failure it restores deleted rules and resumes the entry only if it paused it, and reports every resource it could not restore (`rollback incomplete, pending: ...`). Removing a task whose resources are all absent succeeds and says it was already absent; an owned rule without a scheduler entry is cleaned up. `im_any_message_agent` is never touched; an execution already started is not cancelled and history is kept.
+- Tasks created before this version keep working. Only the exact ids `<task_id>_notify` / `<task_id>_run` are considered owned; no name-pattern guessing.
+
+## History
+
+Each fire (automatic or `trigger_now`) is recorded in `cap_activity_log` with origin `scheduled_task` and the task id as ref; the correlation id is `sched:<task id>:<planned_ms>` (the prefix keeps IM message ids from being mistaken for scheduler fires).
+
+- Failed dispatches are logged by the scheduler as `error`. A successful publish is not logged as completed because it only means the event was queued.
+- Terminal outcomes of `send_message` (send result, not reading) and synchronous `run_script` (script exit or error) are logged as `completed` / `error` through a `claw_cap` call observer installed by the scheduler. The observer keeps no per-task state, so a run that already started still logs after its task is removed.
+- `wake_agent`: the router passes the correlation id to the agent request, `claw_core` copies it into the final `out_message` event, and the router's delivery of that message (a `send_message` cap call carrying the same correlation id) is logged as the terminal outcome, `completed` or `error` if delivery failed (e.g. the channel disappeared). Intermediate `agent_stage` messages carry no correlation id and are not logged. An agent run that ends without any text never reaches delivery and has no terminal entry; it is not reported as completed. `claw_core` is not modified.
+- Async scripts (`lua_run_script_async`) report only that the script started and have no completion hook; they are not logged as completed. Scheduled `run_script` rules created by this skill are always synchronous.
+- Interrupted-by-reboot runs have no terminal entry (never a false success); the listing reports "no terminal result recorded for the latest fire". Retention is the bounded policy of `cap_activity_log`; history is kept after a task is deleted.
+- No new automatic retries exist: a `once` fire is consumed even if it fails, and interval/cron simply fire at their next planned time.
+- Lookups distinguish `ESP_ERR_NOT_FOUND` from other failures: a failing scheduler/router query aborts creation or removal instead of being treated as "absent".

@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/cap_scheduler.c"
+        "src/cap_scheduler_activity.c"
         "src/cap_scheduler_parser.c"
         "src/cap_scheduler_store.c"
         "src/cmd_cap_scheduler.c"

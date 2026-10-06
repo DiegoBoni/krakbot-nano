@@ -80,3 +80,10 @@ esp_err_t cap_scheduler_build_aux_path(const char *path,
 esp_err_t cap_scheduler_entry_to_json(const cap_scheduler_entry_t *entry,
                                       bool include_item,
                                       cJSON **out_json);
+
+/** Correlation ids of scheduler events are "<prefix><task id>:<planned_ms>"; the prefix keeps IM message ids from matching. */
+#define CAP_SCHEDULER_CORRELATION_PREFIX "sched:"
+
+/** Install/remove the claw_cap observer that logs terminal outcomes of scheduled send_message/run_script calls. */
+void cap_scheduler_activity_install(void);
+void cap_scheduler_activity_uninstall(void);

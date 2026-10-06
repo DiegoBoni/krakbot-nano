@@ -122,6 +122,20 @@ esp_err_t cap_activity_log_list_json(size_t limit,
                                      size_t out_size,
                                      size_t *out_count);
 
+/**
+ * @brief  Same as cap_activity_log_list_json() with an exact-match filter on the entry ref
+ *
+ *         The filter is applied before @p limit, so limit=1 returns the newest entry of that ref even
+ *         when newer entries of other refs exist. NULL or empty @p ref_filter = any ref.
+ */
+esp_err_t cap_activity_log_list_json_ref(size_t limit,
+                                         cap_activity_origin_t origin_filter,
+                                         const char *ref_filter,
+                                         int64_t since_ms,
+                                         char *out,
+                                         size_t out_size,
+                                         size_t *out_count);
+
 esp_err_t cap_activity_log_get_stats(cap_activity_log_stats_t *out);
 
 /** @brief  Enum <-> string conversions; NULL or unknown strings give ESP_ERR_INVALID_ARG. */
