@@ -64,8 +64,21 @@ static esp_err_t cap_scheduler_execute_reload(const char *input_json,
                                               const claw_cap_call_context_t *ctx,
                                               char *output,
                                               size_t output_size);
+static esp_err_t cap_scheduler_execute_time_status(const char *input_json,
+                                                   const claw_cap_call_context_t *ctx,
+                                                   char *output,
+                                                   size_t output_size);
 
 static const claw_cap_descriptor_t s_scheduler_descriptors[] = {
+    {
+        .id = "scheduler_time_status",
+        .name = "scheduler_time_status",
+        .family = "scheduler",
+        .description = "Report whether the scheduler has been told the wall clock is synchronized, plus the current epoch in ms.",
+        .kind = CLAW_CAP_KIND_HYBRID,
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = cap_scheduler_execute_time_status,
+    },
     {
         .id = "scheduler_list",
         .name = "scheduler_list",
@@ -424,25 +437,31 @@ static esp_err_t cap_scheduler_build_payload_json(const cap_scheduler_entry_t *e
     return ESP_OK;
 }
 
-/* Records the fire in the activity log. Best effort: never changes scheduler behaviour. */
-static void cap_scheduler_log_activity(const cap_scheduler_entry_t *entry, esp_err_t publish_err)
+/* Records a failed fire in the activity log. Best effort: never changes scheduler behaviour.
+ * A successful publish only means the event was queued, so it is not logged as completed here;
+ * the terminal outcome (send result, script exit, agent reply) belongs to the executing side and is
+ * correlated through the event correlation_id "<task id>:<planned_ms>" (ref = task id). */
+static void cap_scheduler_log_activity(const cap_scheduler_entry_t *entry,
+                                       esp_err_t publish_err,
+                                       bool immediate,
+                                       int64_t planned_time_ms)
 {
     char reason[CAP_ACTIVITY_LOG_REASON_MAX + 1];
     char detail[CAP_ACTIVITY_LOG_DETAIL_MAX + 1];
     esp_err_t log_err;
 
-    snprintf(reason, sizeof(reason), "schedule %s/%s",
-             cap_scheduler_kind_to_string_local(entry->item.kind), entry->item.id);
     if (publish_err == ESP_OK) {
-        snprintf(detail, sizeof(detail), "event published");
-    } else {
-        snprintf(detail, sizeof(detail), "publish failed: %s", esp_err_to_name(publish_err));
+        return;
     }
+    snprintf(reason, sizeof(reason), "schedule %s/%s %s",
+             cap_scheduler_kind_to_string_local(entry->item.kind), entry->item.id,
+             immediate ? "manual" : "automatic");
+    snprintf(detail, sizeof(detail), "publish failed: %s correlation=%s:%" PRId64,
+             esp_err_to_name(publish_err), entry->item.id, planned_time_ms);
     log_err = cap_activity_log_append(CAP_ACTIVITY_ORIGIN_SCHEDULED_TASK,
                                       "scheduled task fired",
                                       reason,
-                                      publish_err == ESP_OK ? CAP_ACTIVITY_RESULT_COMPLETED
-                                                            : CAP_ACTIVITY_RESULT_ERROR,
+                                      CAP_ACTIVITY_RESULT_ERROR,
                                       entry->item.id,
                                       detail);
     if (log_err != ESP_OK && log_err != ESP_ERR_INVALID_STATE) {
@@ -479,7 +498,7 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
                                            sizeof(payload_json));
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to build schedule payload: %s", esp_err_to_name(err));
-        cap_scheduler_log_activity(entry, err);
+        cap_scheduler_log_activity(entry, err, immediate, planned_time_ms);
         return err;
     }
 
@@ -552,7 +571,7 @@ static esp_err_t cap_scheduler_publish_entry_locked(cap_scheduler_entry_t *entry
                  entry->item.event_key);
     }
 
-    cap_scheduler_log_activity(entry, publish_err);
+    cap_scheduler_log_activity(entry, publish_err, immediate, planned_time_ms);
     return err;
 }
 
@@ -1452,5 +1471,22 @@ static esp_err_t cap_scheduler_execute_reload(const char *input_json,
     (void)ctx;
     ESP_RETURN_ON_ERROR(cap_scheduler_reload(), TAG, "reload failed");
     snprintf(output, output_size, "{\"ok\":true}");
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_execute_time_status(const char *input_json,
+                                                   const claw_cap_call_context_t *ctx,
+                                                   char *output,
+                                                   size_t output_size)
+{
+    bool time_valid;
+
+    (void)input_json;
+    (void)ctx;
+    cap_scheduler_lock();
+    time_valid = s_cap_scheduler.time_valid;
+    cap_scheduler_unlock();
+    snprintf(output, output_size, "{\"time_valid\":%s,\"now_ms\":%" PRId64 "}",
+             time_valid ? "true" : "false", cap_scheduler_now_ms());
     return ESP_OK;
 }

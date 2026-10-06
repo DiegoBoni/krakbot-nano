@@ -19,6 +19,7 @@ local function run()
     local pending = {}
     local restore = {}
     local was_enabled = false
+    local consumed = false
 
     if not string.match(task_id, "^[a-z0-9_-]+$") then
         error("args.task_id must use lowercase letters, digits, underscore, or hyphen")
@@ -43,12 +44,19 @@ local function run()
     if sched_ok then
         local decoded = json.decode(sched_out)
         if type(decoded) == "table" then
-            was_enabled = decoded.enabled ~= false and decoded.status ~= "paused"
+            local item = decoded.item or decoded
+            -- A once task is consumed after its single fire, whether it succeeded or failed.
+            consumed = decoded.status == "completed"
+                or (item.kind == "once" and (decoded.next_fire_ms or 0) <= 0 and (decoded.last_fire_ms or 0) > 0)
+            was_enabled = item.enabled ~= false and decoded.status ~= "paused" and not consumed
         end
         -- Block new firings first; running work keeps its own delivery context.
-        local ok, out, err = call("scheduler_pause", { id = task_id })
-        if not ok then
-            error("could not pause scheduler entry before removal: err=" .. tostring(err) .. " out=" .. tostring(out))
+        -- A consumed once task can no longer fire, and pausing it would clobber its terminal status.
+        if not consumed then
+            local ok, out, err = call("scheduler_pause", { id = task_id })
+            if not ok then
+                error("could not pause scheduler entry before removal: err=" .. tostring(err) .. " out=" .. tostring(out))
+            end
         end
     end
 

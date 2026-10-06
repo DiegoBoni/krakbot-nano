@@ -11,7 +11,7 @@ local function call(name, payload)
     })
 end
 
-local function describe(item, snap_status, next_fire_ms, last_fire_ms)
+local function describe(item, snap_status, next_fire_ms, last_fire_ms, last_result)
     local mode = item.event_type == "message" and "wake_agent" or nil
     local rule_state = "shared:im_any_message_agent"
 
@@ -28,7 +28,9 @@ local function describe(item, snap_status, next_fire_ms, last_fire_ms)
     end
 
     local state
-    if snap_status == "completed" then
+    local consumed = snap_status == "completed"
+        or (item.kind == "once" and next_fire_ms <= 0 and last_fire_ms > 0)
+    if consumed then
         state = "consumed"
     elseif snap_status == "paused" or item.enabled == false or snap_status == "disabled" then
         state = "paused"
@@ -47,7 +49,10 @@ local function describe(item, snap_status, next_fire_ms, last_fire_ms)
         enabled = item.enabled,
         state = state,
         last_fire_ms = last_fire_ms > 0 and last_fire_ms or "none (never fired)",
-        next_fire_ms = next_fire_ms > 0 and next_fire_ms or "none",
+        next_fire_ms = next_fire_ms > 0 and next_fire_ms
+            or (consumed and "none (one-shot already consumed)" or "none"),
+        last_result = last_result or (last_fire_ms > 0 and "not in activity log (removed by retention or not yet recorded)"
+            or "none (never fired)"),
         target = item.source_channel ~= "time" and (item.source_channel .. ":" .. item.chat_id) or nil,
         router_rule = rule_state,
         consistency = (rule_state == "missing") and "INCONSISTENT: router rule missing (task cannot deliver)" or "ok",
@@ -62,6 +67,17 @@ local function run()
     end
     local decoded = json.decode(out)
     local entries = type(decoded) == "table" and (decoded.items or decoded.schedules or decoded) or {}
+    local last_by_task = {}
+    local lok, lout = call("activity_log_list", { origin = "scheduled_task", limit = 50 })
+    local logged = lok and json.decode(lout) or nil
+    -- Last result lives in the activity log only (newest first); the scheduler keeps no second history.
+    if type(logged) == "table" then
+        for _, rec in ipairs(logged) do
+            if type(rec.ref) == "string" and not last_by_task[rec.ref] then
+                last_by_task[rec.ref] = { result = rec.result, detail = rec.detail, ts = rec.ts }
+            end
+        end
+    end
     local only_id = type(raw_args.task_id) == "string" and raw_args.task_id or ""
     local result = {}
 
@@ -71,18 +87,10 @@ local function run()
             local full = gok and json.decode(gout) or entry
             local item = type(full) == "table" and (full.item or full) or entry
             result[#result + 1] = describe(item, full.status or entry.status or "unknown",
-                full.next_fire_ms or -1, full.last_fire_ms or 0)
+                full.next_fire_ms or -1, full.last_fire_ms or 0, last_by_task[entry.id])
         end
     end
-
-    -- Last result lives in the activity log only; the scheduler keeps no second history.
-    local lok, lout = call("activity_log_list", { origin = "scheduled_task", limit = 50 })
     print("[scheduled_task] tasks=" .. json.encode(result))
-    if lok then
-        print("[scheduled_task] activity_log(scheduled_task, ref=<task id>)=" .. tostring(lout))
-    else
-        print("[scheduled_task] activity log unavailable or entries removed by retention")
-    end
 end
 
 local ok, err = xpcall(run, debug.traceback)

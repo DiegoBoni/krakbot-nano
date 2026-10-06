@@ -25,8 +25,6 @@ local VALID_KINDS = {
     once = true,
 }
 
--- Epoch values below this are treated as "clock not synchronized" (2020-01-01 UTC, in ms).
-local MIN_SYNCED_EPOCH_MS = 1577836800000
 -- Largest epoch in ms that a Lua double represents exactly.
 local MAX_EPOCH_MS = 9007199254740991
 -- Largest year accepted for local date strings.
@@ -79,10 +77,22 @@ local function validate_script_path(path)
 end
 
 
+-- Clock sync is the scheduler's own flag (set when SNTP sync completes), not an epoch heuristic.
 local function now_ms_synced()
-    local now_s = os.time()
-    if type(now_s) ~= "number" or now_s * 1000 < MIN_SYNCED_EPOCH_MS then
+    local ok, out = capability.call("scheduler_time_status", {}, {
+        source_cap = "scheduled_task",
+        max_output_bytes = 512,
+    })
+    local status = ok and json.decode(out) or nil
+    if type(status) ~= "table" then
+        error("cannot determine clock state: scheduler_time_status unavailable")
+    end
+    if status.time_valid ~= true then
         error("system clock is not synchronized; sync time before creating cron or once tasks")
+    end
+    local now_s = os.time()
+    if type(now_s) ~= "number" then
+        error("system clock is unavailable")
     end
     return now_s * 1000
 end
