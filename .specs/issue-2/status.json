@@ -2,9 +2,9 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 2,
   "branch": "nightshift/issue-2",
-  "state": "AI_REVIEW",
+  "state": "FIXING",
   "counters": {
-    "reviewCycles": 2,
+    "reviewCycles": 3,
     "retries": 2,
     "startedAt": "2026-10-04T01:00:26.806Z",
     "activeMs": 2218306
@@ -88,6 +88,12 @@
       "at": "2026-10-06T01:07:32.190Z",
       "from": "FIXING",
       "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:07:59.999Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "Se solicitan cambios. Hay problemas bloqueantes: la detección de DST por sondeo es poco fiable y sin pruebas, el borrado de tareas consumidas y su rollback tienen casos límite sin resolver, el listado de resultados por tarea es poco confiable, la integración de historial con #4 está incompleta para wake_agent y scripts asíncronos, y la cobertura de pruebas es insuficiente respecto al spec."
     }
   ],
   "agentUsageLog": [
@@ -235,9 +241,24 @@
         "outputTokens": 17358,
         "costUsd": 1.0206574
       }
+    },
+    {
+      "at": "2026-10-06T01:07:59.103Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 20302,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2304,
+        "costUsd": 0.2063446
+      }
     }
   ],
   "createdAt": "2026-10-04T01:00:26.807Z",
-  "updatedAt": "2026-10-06T01:07:36.564Z",
-  "prNumber": 9
+  "updatedAt": "2026-10-06T01:08:04.195Z",
+  "prNumber": 9,
+  "lastError": "Se solicitan cambios. Hay problemas bloqueantes: la detección de DST por sondeo es poco fiable y sin pruebas, el borrado de tareas consumidas y su rollback tienen casos límite sin resolver, el listado de resultados por tarea es poco confiable, la integración de historial con #4 está incompleta para wake_agent y scripts asíncronos, y la cobertura de pruebas es insuficiente respecto al spec."
 }
