@@ -885,6 +885,7 @@ esp_err_t cap_scheduler_start(void)
         return ESP_FAIL;
     }
     s_cap_scheduler.started = true;
+    cap_scheduler_activity_install();
     return ESP_OK;
 }
 
@@ -897,6 +898,7 @@ esp_err_t cap_scheduler_stop(void)
     while (s_cap_scheduler.task_handle) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
+    cap_scheduler_activity_uninstall();
     return ESP_OK;
 }
 

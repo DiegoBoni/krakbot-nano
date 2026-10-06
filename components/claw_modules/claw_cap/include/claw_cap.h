@@ -163,6 +163,20 @@ esp_err_t claw_cap_call(const char *id_or_name,
                         const claw_cap_call_context_t *ctx,
                         char *output,
                         size_t output_size);
+/**
+ * @brief  Observer invoked after every claw_cap_call() finishes (outside the registry lock)
+ *
+ *         Lets a capability record terminal outcomes of calls it does not execute itself. The observer
+ *         must be fast and must not call claw_cap_call() re-entrantly.
+ */
+typedef void (*claw_cap_call_observer_fn)(const char *cap_name,
+                                          const claw_cap_call_context_t *ctx,
+                                          esp_err_t err,
+                                          const char *output,
+                                          void *user_ctx);
+
+/** @brief  Set (or clear with NULL) the single call observer. */
+esp_err_t claw_cap_set_call_observer(claw_cap_call_observer_fn observer, void *user_ctx);
 esp_err_t claw_cap_call_from_core(const char *cap_name,
                                   const char *input_json,
                                   const claw_core_request_t *request,

@@ -1930,6 +1930,7 @@ static esp_err_t claw_event_router_execute_send_message_action(
     call_ctx.target_channel = channel;
     call_ctx.target_chat_id = chat_id;
     call_ctx.source_cap = "claw_event_router";
+    call_ctx.correlation_id = event->correlation_id[0] ? event->correlation_id : event->message_id;
     call_ctx.caller = CLAW_CAP_CALLER_SYSTEM;
     call_ctx.core = claw_agent_mgr_get_root_core();
     err = claw_cap_call(cap_name, payload, &call_ctx, output, sizeof(output));

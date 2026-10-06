@@ -72,6 +72,9 @@ typedef struct {
 } claw_cap_runtime_t;
 
 static EXT_RAM_BSS_ATTR claw_cap_runtime_t s_runtime = {0};
+static claw_cap_call_observer_fn s_call_observer;
+static void *s_call_observer_ctx;
+static portMUX_TYPE s_call_observer_lock = portMUX_INITIALIZER_UNLOCKED;
 
 typedef enum {
     CLAW_CAP_AUTH_OK = 0,
@@ -1873,7 +1876,29 @@ esp_err_t claw_cap_call(const char *id_or_name,
                  esp_err_to_name(err));
     }
 
+    {
+        claw_cap_call_observer_fn observer;
+        void *observer_ctx;
+
+        portENTER_CRITICAL(&s_call_observer_lock);
+        observer = s_call_observer;
+        observer_ctx = s_call_observer_ctx;
+        portEXIT_CRITICAL(&s_call_observer_lock);
+        if (observer && ctx) {
+            observer(name ? name : id_or_name, ctx, err, output, observer_ctx);
+        }
+    }
+
     return err;
+}
+
+esp_err_t claw_cap_set_call_observer(claw_cap_call_observer_fn observer, void *user_ctx)
+{
+    portENTER_CRITICAL(&s_call_observer_lock);
+    s_call_observer = observer;
+    s_call_observer_ctx = user_ctx;
+    portEXIT_CRITICAL(&s_call_observer_lock);
+    return ESP_OK;
 }
 
 char *claw_cap_build_catalog(void)

@@ -29,6 +29,11 @@ local VALID_KINDS = {
 local MAX_EPOCH_MS = 9007199254740991
 -- Largest year accepted for local date strings.
 local MAX_YEAR = 9999
+-- DST probing window around a local time: +-DST_PROBE_STEPS * DST_PROBE_STEP_S seconds.
+local DST_PROBE_STEP_S = 1800
+local DST_PROBE_STEPS = 4
+-- Error text returned by capability.call for a missing resource.
+local ERR_NOT_FOUND = "ESP_ERR_NOT_FOUND"
 
 local function raw_string(key)
     local value = raw_args[key]
@@ -136,22 +141,28 @@ local function parse_at(value)
             error("args.at is not a valid calendar date/time")
         end
 
-        local t_dst = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
-                                min = f.min, sec = f.sec, isdst = true })
-        local t_std = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
-                                min = f.min, sec = f.sec, isdst = false })
-        if not t_dst or not t_std then
+        -- os.time normalizes nonexistent fields (DST gap) into a different wall clock, and a single
+        -- isdst hint cannot expose an overlap. Probe every instant within +-2h around the candidate
+        -- (30 min steps cover all real DST offsets) and count how many map back to exactly these fields.
+        local t0 = os.time({ year = f.year, month = f.month, day = f.day, hour = f.hour,
+                             min = f.min, sec = f.sec })
+        if not t0 then
             error("args.at cannot be converted with the firmware time zone")
         end
-        local ok_dst = local_fields_match(t_dst, f)
-        local ok_std = local_fields_match(t_std, f)
-        if not ok_dst and not ok_std then
+        local matches = {}
+        for step = -DST_PROBE_STEPS, DST_PROBE_STEPS do
+            local t = t0 + step * DST_PROBE_STEP_S
+            if local_fields_match(t, f) then
+                matches[#matches + 1] = t
+            end
+        end
+        if #matches == 0 then
             error("args.at does not exist in the firmware time zone (DST gap); choose another time")
         end
-        if ok_dst and ok_std and t_dst ~= t_std then
+        if #matches > 1 then
             error("args.at is ambiguous in the firmware time zone (DST overlap); choose another time or use epoch ms")
         end
-        at_ms = (ok_std and t_std or t_dst) * 1000
+        at_ms = matches[1] * 1000
     else
         error("args.at is required when kind is once")
     end
@@ -218,12 +229,20 @@ local function validate_destination()
     end
 end
 
+-- True if the resource exists, false only on NOT_FOUND. Any other failure aborts: an unreadable
+-- router/scheduler must not be mistaken for "no duplicate".
 local function cap_exists(name, payload)
-    local ok = capability.call(name, payload, {
+    local ok, out, err = capability.call(name, payload, {
         source_cap = "scheduled_task",
         max_output_bytes = 8192,
     })
-    return ok and true or false
+    if ok then
+        return true
+    end
+    if err == ERR_NOT_FOUND then
+        return false
+    end
+    error(string.format("duplicate check %s failed: err=%s out=%s", name, tostring(err), tostring(out)))
 end
 
 local function build_schedule(task_id, kind, mode, text)

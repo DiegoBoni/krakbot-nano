@@ -8,6 +8,23 @@ local task_id = type(raw_args.task_id) == "string" and raw_args.task_id or ""
 -- (they reuse the shared im_any_message_agent rule, which is never touched here).
 local OWNED_RULE_SUFFIXES = { "_notify", "_run" }
 
+local ERR_NOT_FOUND = "ESP_ERR_NOT_FOUND"
+
+-- Lookup that separates "absent" (NOT_FOUND) from a failed query; failures abort the removal.
+local function lookup(name, payload)
+    local ok, out, err = capability.call(name, payload, {
+        source_cap = "scheduled_task",
+        max_output_bytes = 8192,
+    })
+    if ok then
+        return true, out
+    end
+    if err == ERR_NOT_FOUND then
+        return false, nil
+    end
+    error(string.format("%s failed (not treated as absent): err=%s out=%s", name, tostring(err), tostring(out)))
+end
+
 local function call(name, payload)
     return capability.call(name, payload, {
         source_cap = "scheduled_task",
@@ -26,11 +43,11 @@ local function run()
     end
 
     -- Existing resources, identified only by the exact ids this skill creates.
-    local sched_ok, sched_out = call("scheduler_get", { id = task_id })
+    local sched_ok, sched_out = lookup("scheduler_get", { id = task_id })
     local rules = {}
     for _, suffix in ipairs(OWNED_RULE_SUFFIXES) do
         local rule_id = task_id .. suffix
-        local ok, out = call("get_router_rule", { id = rule_id })
+        local ok, out = lookup("get_router_rule", { id = rule_id })
         if ok then
             rules[#rules + 1] = { id = rule_id, json = out }
         end

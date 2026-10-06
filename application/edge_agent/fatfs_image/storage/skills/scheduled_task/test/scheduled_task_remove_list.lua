@@ -13,6 +13,7 @@ local function load_script(path, args_tbl, caps)
                     calls[#calls + 1] = cap
                     local r = caps[cap]
                     if r == nil then return false, "missing", "ESP_ERR_NOT_FOUND" end
+                    if type(r) == "table" then return false, "boom", r.err end
                     return true, r
                 end }
             end
@@ -47,5 +48,31 @@ assert(not called("delete_router_rule"))
 -- Nothing exists: idempotent success.
 load_script("scripts/remove_scheduled_task.lua", { task_id = "t3" }, {})
 assert(not called("scheduler_remove"))
+
+-- A failed query (not NOT_FOUND) must abort removal instead of being read as "absent".
+local ok = pcall(load_script, "scripts/remove_scheduled_task.lua", { task_id = "t4" }, {
+    scheduler_get = { err = "ESP_ERR_INVALID_STATE" },
+})
+assert(not ok, "scheduler_get failure must not be treated as absent")
+assert(not called("scheduler_remove"))
+
+-- Same for duplicate detection in add: a failing scheduler_get must abort creation.
+ok = pcall(load_script, "scripts/add_scheduled_task.lua", {
+    task_id = "t5", kind = "interval", interval_ms = 60000, mode = "run_script",
+    script_path = "/system/x.lua",
+}, { scheduler_get = { err = "ESP_ERR_INVALID_STATE" } })
+assert(not ok, "duplicate check failure must abort creation")
+assert(not called("add_router_rule") and not called("scheduler_add"))
+
+-- List reads the activity log object ({"entries":[...]}), not a bare array.
+state.list = { items = { { id = "t6" } } }
+state.get6 = { status = "scheduled", item = { id = "t6", kind = "interval", interval_ms = 1000, start_at_ms = 0,
+    cron_expr = "", enabled = true, event_type = "message", source_channel = "tg", chat_id = "1", text = "x" },
+    next_fire_ms = 5, last_fire_ms = 3 }
+state.log = { entries = { { ref = "t6", result = "completed", detail = "ok", ts = 1 } } }
+load_script("scripts/list_scheduled_tasks.lua", {}, {
+    scheduler_list = "list", scheduler_get = "get6", activity_log_list = "log",
+})
+assert(called("activity_log_list"))
 
 print("scheduled_task remove/list mock checks passed")

@@ -178,4 +178,9 @@ After the script succeeds, summarize what was added: `task_id`, mode, schedule k
 
 ## History
 
-Each fire (automatic or `trigger_now`) is recorded by the scheduler in `cap_activity_log` with origin `scheduled_task` and the task id as ref. The scheduler logs only failed dispatches (`error`, with correlation `<task id>:<planned_ms>`); a successful publish is not logged as completed because it only means the event was queued. Known limitation / pending for #4: terminal completion of `run_script` / `wake_agent` runs is not yet propagated to the log.
+Each fire (automatic or `trigger_now`) is recorded in `cap_activity_log` with origin `scheduled_task` and the task id as ref; the correlation is `<task id>:<planned_ms>`.
+
+- Failed dispatches are logged by the scheduler as `error`. A successful publish is not logged as completed because it only means the event was queued.
+- Terminal outcomes of `send_message` (send result, not reading) and synchronous `run_script` (script exit or error) are logged as `completed` / `error` through a `claw_cap` call observer installed by the scheduler. The observer keeps no per-task state, so a run that already started still logs after its task is removed.
+- Pending: `wake_agent` and async scripts finish inside `claw_core` / a background task and are not yet logged as terminal (completed/failed) results; `claw_core` is intentionally not modified. Interrupted-by-reboot runs therefore simply have no terminal entry. Listing shows `last_result` from the newest of the latest 50 `scheduled_task` entries; older results report that they were dropped by retention or fall outside that window.
+- Lookups distinguish `ESP_ERR_NOT_FOUND` from other failures: a failing scheduler/router query aborts creation or removal instead of being treated as "absent".
