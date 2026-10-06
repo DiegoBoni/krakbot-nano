@@ -2,9 +2,9 @@
   "repo": "DiegoBoni/krakbot-nano",
   "issueNumber": 2,
   "branch": "nightshift/issue-2",
-  "state": "AI_REVIEW",
+  "state": "FIXING",
   "counters": {
-    "reviewCycles": 3,
+    "reviewCycles": 4,
     "retries": 2,
     "startedAt": "2026-10-04T01:00:26.806Z",
     "activeMs": 2218306
@@ -99,6 +99,12 @@
       "at": "2026-10-06T01:16:30.252Z",
       "from": "FIXING",
       "to": "AI_REVIEW"
+    },
+    {
+      "at": "2026-10-06T01:16:57.701Z",
+      "from": "AI_REVIEW",
+      "to": "FIXING",
+      "reason": "Hay avances (once, borrado, listado, filtro por ref), pero persisten problemas bloqueantes: el historial de #4 no cubre un resultado terminal fiable para wake_agent ni registra el inicio del disparo, el observer único de claw_cap se pisa al detenerse el scheduler, la conversión horaria por sondeo no está validada en firmware, se cambia el comportamiento de tareas once existentes ante fallos, no se valida disponibilidad real del canal IM y faltan pruebas de C exigidas por el spec."
     }
   ],
   "agentUsageLog": [
@@ -274,9 +280,24 @@
         "outputTokens": 59294,
         "costUsd": 2.3651278
       }
+    },
+    {
+      "at": "2026-10-06T01:16:56.755Z",
+      "stage": "review",
+      "agent": "claude-reviewer",
+      "model": "claude-sonnet-5-5",
+      "durationMs": 20123,
+      "attempt": 3,
+      "outcome": "success",
+      "usage": {
+        "inputTokens": 2,
+        "outputTokens": 2197,
+        "costUsd": 0.2835546
+      }
     }
   ],
   "createdAt": "2026-10-04T01:00:26.807Z",
-  "updatedAt": "2026-10-06T01:16:34.718Z",
-  "prNumber": 9
+  "updatedAt": "2026-10-06T01:17:01.462Z",
+  "prNumber": 9,
+  "lastError": "Hay avances (once, borrado, listado, filtro por ref), pero persisten problemas bloqueantes: el historial de #4 no cubre un resultado terminal fiable para wake_agent ni registra el inicio del disparo, el observer único de claw_cap se pisa al detenerse el scheduler, la conversión horaria por sondeo no está validada en firmware, se cambia el comportamiento de tareas once existentes ante fallos, no se valida disponibilidad real del canal IM y faltan pruebas de C exigidas por el spec."
 }
