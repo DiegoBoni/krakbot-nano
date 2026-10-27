@@ -103,3 +103,13 @@ if the first plan misses the action.
 firmware already retries these a few times; if it still surfaces, tell the user it is a
 temporary network problem and retry the same call once. It does not mean the app or account is
 misconfigured.
+
+## Response too large (`MCP request failed (ESP_FAIL)`)
+
+The device cannot receive a gateway reply bigger than 64 KB (the log says
+`SSE JSON-RPC payload exceeds 65535 bytes`). `COMPOSIO_SEARCH_TOOLS` with many queries at once
+(e.g. Gmail + Calendar + Tasks + Instagram + YouTube) produces such a reply and fails with a
+generic `ESP_FAIL`, even though the network is fine. Do not blame Wi-Fi or TLS: call
+`COMPOSIO_SEARCH_TOOLS` with ONE use case per call (one app at a time) and, for known tools such as
+`GMAIL_FETCH_EMAILS` or `GOOGLETASKS_INSERT_TASK`, skip the search and call them directly.
+Keep `max_results`/page sizes small (5-10) for the same reason.
