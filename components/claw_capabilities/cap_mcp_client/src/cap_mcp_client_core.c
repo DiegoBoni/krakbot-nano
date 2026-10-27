@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mcp_engine.h"
@@ -16,6 +19,8 @@
 #include "cap_mcp_registry.h"
 
 #define CAP_MCP_HTTP_TIMEOUT_MS    20000
+#define CAP_MCP_CONNECT_MAX_ATTEMPTS   3
+#define CAP_MCP_CONNECT_RETRY_DELAY_MS 700
 
 static const char *TAG = "cap_mcp_client";
 
@@ -326,6 +331,39 @@ static esp_err_t cap_mcp_mgr_create(const char *server_url,
     return err;
 }
 
+/* Only connection-establishment failures are retried: the request never reached the
+ * server, so repeating it cannot duplicate a side effect (e.g. sending an email twice). */
+static bool cap_mcp_err_is_connect_failure(esp_err_t err)
+{
+    return err == ESP_ERR_HTTP_CONNECT || err == ESP_ERR_HTTP_CONNECTING;
+}
+
+static void cap_mcp_connect_retry_wait(const char *what, int attempt, esp_err_t err)
+{
+    ESP_LOGW(TAG, "%s attempt %d/%d failed (%s), retrying",
+             what, attempt, CAP_MCP_CONNECT_MAX_ATTEMPTS, esp_err_to_name(err));
+    vTaskDelay(pdMS_TO_TICKS(CAP_MCP_CONNECT_RETRY_DELAY_MS));
+}
+
+static esp_err_t cap_mcp_mgr_create_retry(const char *server_url,
+                                          const char *endpoint,
+                                          const cap_mcp_auth_t *auth,
+                                          esp_mcp_mgr_handle_t *mgr_out,
+                                          esp_mcp_t **engine_out)
+{
+    esp_err_t err = ESP_FAIL;
+
+    for (int attempt = 1; attempt <= CAP_MCP_CONNECT_MAX_ATTEMPTS; attempt++) {
+        err = cap_mcp_mgr_create(server_url, endpoint, auth, mgr_out, engine_out);
+        if (err == ESP_OK || !cap_mcp_err_is_connect_failure(err) ||
+            attempt == CAP_MCP_CONNECT_MAX_ATTEMPTS) {
+            break;
+        }
+        cap_mcp_connect_retry_wait("MCP session init", attempt, err);
+    }
+    return err;
+}
+
 static void cap_mcp_mgr_destroy(esp_mcp_mgr_handle_t mgr, esp_mcp_t *engine)
 {
     if (mgr != 0) {
@@ -388,7 +426,7 @@ esp_err_t cap_mcp_list_remote_tools(const char *input_json, cJSON **result_out)
         return err;
     }
 
-    err = cap_mcp_mgr_create(server_url_buf, endpoint_buf, &auth, &mgr, &engine);
+    err = cap_mcp_mgr_create_retry(server_url_buf, endpoint_buf, &auth, &mgr, &engine);
     if (err != ESP_OK) {
         return err;
     }
@@ -449,7 +487,7 @@ esp_err_t cap_mcp_call_remote_tool(const char *input_json, cJSON **result_out)
         return ESP_ERR_NO_MEM;
     }
 
-    err = cap_mcp_mgr_create(server_url_buf, endpoint_buf, &auth, &mgr, &engine);
+    err = cap_mcp_mgr_create_retry(server_url_buf, endpoint_buf, &auth, &mgr, &engine);
     if (err != ESP_OK) {
         cJSON_free(arguments_json);
         return err;
@@ -461,7 +499,13 @@ esp_err_t cap_mcp_call_remote_tool(const char *input_json, cJSON **result_out)
     req.u.call.tool_name = tool_name_buf;
     req.u.call.args_json = arguments_json;
 
-    err = esp_mcp_mgr_post_tools_call(mgr, &req);
+    for (int attempt = 1;; attempt++) {
+        err = esp_mcp_mgr_post_tools_call(mgr, &req);
+        if (!cap_mcp_err_is_connect_failure(err) || attempt == CAP_MCP_CONNECT_MAX_ATTEMPTS) {
+            break;
+        }
+        cap_mcp_connect_retry_wait("MCP tools/call", attempt, err);
+    }
     cap_mcp_mgr_destroy(mgr, engine);
     cJSON_free(arguments_json);
     if (err == ESP_OK) {

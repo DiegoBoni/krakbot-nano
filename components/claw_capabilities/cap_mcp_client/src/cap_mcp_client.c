@@ -118,6 +118,29 @@ static void cap_mcp_append_gateway_hint(char *output, size_t output_size)
              "tool_name.");
 }
 
+/* Gateway servers with several accounts connected for one app (e.g. two Gmail logins) reject
+ * a call that does not say which one to use, and list only opaque account ids. Models then tend
+ * to guess an id and label the result with whatever address the user mentioned. Point them at
+ * the step that maps ids to real emails, as part of the error they just received. The error can
+ * arrive as a normal tool result rather than isError=true, so match on the text alone. */
+#define CAP_MCP_MULTI_ACCOUNT_MARKER "accounts connected"
+
+static void cap_mcp_append_multi_account_hint(char *output, size_t output_size)
+{
+    size_t len = strlen(output);
+
+    if (len >= output_size - 1) {
+        return;
+    }
+    snprintf(output + len, output_size - len,
+             " -- To choose an account: call the gateway's connections meta-tool "
+             "(MANAGE_CONNECTIONS) with action \"list\" for that toolkit to see each account's "
+             "real email (for Gmail, GMAIL_GET_PROFILE with \"account\" returns emailAddress), pick the one the user means (ask if unclear), then repeat the call "
+             "with \"account\" set to that id next to tool_slug. In your answer, state the exact "
+             "email of the account you used; if the user named an address that is not in the "
+             "list, say it is not connected instead of presenting another account as it.");
+}
+
 static esp_err_t cap_mcp_call_execute(const char *input_json,
                                       const claw_cap_call_context_t *ctx,
                                       char *output,
@@ -158,6 +181,9 @@ static esp_err_t cap_mcp_call_execute(const char *input_json,
 
     if (failed && strstr(output, "not found")) {
         cap_mcp_append_gateway_hint(output, output_size);
+    }
+    if (strstr(output, CAP_MCP_MULTI_ACCOUNT_MARKER)) {
+        cap_mcp_append_multi_account_hint(output, output_size);
     }
 
     return ESP_OK;

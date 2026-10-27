@@ -1,7 +1,7 @@
 ---
 {
   "name": "mcp_composio",
-  "description": "Call Gmail, Google Drive, Google Calendar, Slack, or any other app connected through the device's 'composio' MCP server. Requires the composio MCP server to be saved and enabled in the device's MCP settings.",
+  "description": "Read or manage the user's email (Gmail), calendar (Google Calendar), Google Drive files, Google Tasks and other connected apps via the 'composio' MCP server: 'can you see my emails', 'ver/leer mis correos', 'mi agenda', 'crear una tarea', 'mandar un mail'. The user's accounts are already connected: try it instead of asking them to set anything up or saying you lack access.",
   "metadata": {
     "cap_groups": ["cap_mcp_client"],
     "manage_mode": "readonly"
@@ -56,3 +56,50 @@ step 1.
 `ACTIVE` in the device's MCP settings (or in the connections list this server reports) means
 the OAuth connection for that app succeeded. It says nothing about which MCP tool name to
 call — that's still governed by steps 1-4 above.
+
+## Several accounts connected for one app (e.g. two Gmail accounts)
+
+When an app has more than one connected account, the execute meta-tool fails with a "specify
+which account" style error. The fix is the per-tool `account` field, not giving up:
+
+1. Call the connections meta-tool (its name contains `MANAGE_CONNECTIONS`) with
+   `action: "list"` for that toolkit (e.g. `name: "gmail"`). It returns each account's ID,
+   alias and status.
+2. If the accounts have no useful alias, call it again with `action: "rename"`, the
+   `account_id`, and an `alias` such as `"personal"` / `"work"` so the choice is stable and
+   readable. Ask the user which account is which if it is not obvious from the listing.
+3. In the execute meta-tool (`MULTI_EXECUTE_TOOL`), set `account` to that alias (or account ID)
+   on **every** entry of the `tools` array that targets the app. It sits next to `tool_slug`
+   and `arguments`, not inside `arguments`.
+
+The error itself lists the valid ids, e.g. `Multiple gmail accounts connected. Specify which to
+use via the 'account' field: - "gmail_xxx" - "gmail_yyy"`. Pick one from that list and repeat the
+same call with `"account": "gmail_xxx"` -- verified to work. Match the id to an email address;
+never invent ids. If the `list` result does not show the emails, run `GMAIL_GET_PROFILE` once per
+account id (set `account`) and read `emailAddress` -- verified to return the real address.
+
+Always name the account you actually used, by its real email from `user_info.email`, in your
+answer (e.g. "from dfboni@gmail.com"). If the user asks for an email address that is not in the
+`list` result (for example an address that is only connected to Calendar, not Gmail), say that
+address is not connected to that app and offer the accounts that are -- never present another
+account's data under the address the user asked for. Pick the same account for follow-up
+questions in the same conversation unless the user changes it.
+
+If the user did not say which account to use and the choice changes the outcome (sending mail,
+creating events), ask them instead of guessing.
+
+## An action "does not exist" (e.g. no CREATE_TASK for Google Tasks)
+
+Action slugs are not always named the way you expect (creating a Google Task is `GOOGLETASKS_INSERT_TASK`,
+which needs `title` and `tasklist_id`; get the id from `GOOGLETASKS_LIST_TASK_LISTS` or use `@default`). Never conclude an action is unavailable from guessing a slug. Call the search meta-tool
+(`SEARCH_TOOLS`) with a plain-English use case such as "create a task in Google Tasks" and use
+the slug it returns; if it points to a schema reference, fetch it with the schema meta-tool
+(`GET_TOOL_SCHEMAS`) before executing. Re-run the search with `search_strategy: "tool_search"`
+if the first plan misses the action.
+
+## Transient connection errors
+
+`ESP_ERR_HTTP_CONNECT` means the device could not reach the gateway (Wi-Fi/TLS hiccup). The
+firmware already retries these a few times; if it still surfaces, tell the user it is a
+temporary network problem and retry the same call once. It does not mean the app or account is
+misconfigured.

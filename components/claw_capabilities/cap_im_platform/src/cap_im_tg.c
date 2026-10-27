@@ -359,6 +359,16 @@ static esp_err_t cap_im_tg_api_call(const char *method,
     return ESP_OK;
 }
 
+/* Router rules for chat commands (/session, /llm, /cost) match on the start of the text, so a
+ * "[name] " prefix would turn a command into plain conversation for the agent. */
+static bool cap_im_tg_text_is_command(const char *content)
+{
+    while (*content == ' ' || *content == '\t') {
+        content++;
+    }
+    return *content == '/';
+}
+
 static esp_err_t cap_im_tg_publish_inbound_text(const char *chat_id,
                                                 const char *sender_id,
                                                 const char *message_id,
@@ -375,7 +385,8 @@ static esp_err_t cap_im_tg_publish_inbound_text(const char *chat_id,
     /* Surface who's talking to the agent when the sender has a name
      * configured in the Telegram allowlist - the event schema has no
      * dedicated field for it, so it rides along as a prefix on the text. */
-    if (cap_im_tg_lookup_entry(chat_id, sender_id, sender_name, sizeof(sender_name)) &&
+    if (!cap_im_tg_text_is_command(content) &&
+            cap_im_tg_lookup_entry(chat_id, sender_id, sender_name, sizeof(sender_name)) &&
             sender_name[0]) {
         int written = asprintf(&named_content, "[%s] %s", sender_name, content);
         if (written < 0) {

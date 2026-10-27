@@ -781,6 +781,32 @@ esp_err_t cap_scheduler_entry_to_json(const cap_scheduler_entry_t *entry, bool i
     return ESP_OK;
 }
 
+#define CAP_SCHEDULER_CORRUPT_SUFFIX ".corrupt"
+
+/* A schedules file that is not a JSON array would otherwise abort scheduler init and leave
+ * the device with no scheduled jobs at all on every boot. Keep the unreadable bytes next to
+ * the original (overwriting any older quarantine) so they can be inspected or recovered, and
+ * let the caller continue with an empty schedule set. */
+static void cap_scheduler_quarantine_corrupt_file(const char *path)
+{
+    size_t len = strlen(path) + sizeof(CAP_SCHEDULER_CORRUPT_SUFFIX);
+    char *quarantine_path = malloc(len);
+
+    if (!quarantine_path) {
+        return;
+    }
+    snprintf(quarantine_path, len, "%s%s", path, CAP_SCHEDULER_CORRUPT_SUFFIX);
+    unlink(quarantine_path);
+    if (rename(path, quarantine_path) == 0) {
+        ESP_LOGE(TAG, "Schedules file %s is not a JSON array; moved to %s and starting empty",
+                 path, quarantine_path);
+    } else {
+        ESP_LOGE(TAG, "Schedules file %s is not a JSON array and could not be moved (errno %d); "
+                 "starting empty", path, errno);
+    }
+    free(quarantine_path);
+}
+
 esp_err_t cap_scheduler_load_items(const char *path, cap_scheduler_item_t *items, size_t max_items, size_t *out_count)
 {
     char *buf = NULL;
@@ -805,7 +831,9 @@ esp_err_t cap_scheduler_load_items(const char *path, cap_scheduler_item_t *items
     free(buf);
     if (!cJSON_IsArray(root)) {
         cJSON_Delete(root);
-        return ESP_ERR_INVALID_RESPONSE;
+        cap_scheduler_quarantine_corrupt_file(path);
+        *out_count = 0;
+        return ESP_OK;
     }
 
     cJSON *node = NULL;
