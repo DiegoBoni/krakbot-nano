@@ -5,6 +5,7 @@
  */
 #include "cap_openai_tts.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -54,10 +55,17 @@ static const char *const s_tts_waiting_messages[] = {
  * Capping the synthesized text bounds worst-case latency for long replies;
  * Groq gets a tighter cap since it pays that size penalty per character. */
 #define CAP_TTS_MAX_TEXT_LEN_GROQ   400
-#define CAP_TTS_MAX_TEXT_LEN_OPENAI 2000
+#define CAP_TTS_MAX_TEXT_LEN_OPENAI 800
 /* Groq's wav output defaults to 48kHz; voice replies don't need hi-fi audio,
  * and a lower sample rate shrinks that uncompressed file substantially. */
 #define CAP_TTS_GROQ_SAMPLE_RATE    16000
+/* Texts longer than the per-provider cap are split into several voice
+ * messages instead of being cut off. The chunk count is bounded so a runaway
+ * text cannot keep the device synthesizing for minutes. */
+#define CAP_TTS_MAX_CHUNKS          10
+/* A chunk boundary is searched only in the tail of the window so chunks stay
+ * reasonably full instead of ending at the first early full stop. */
+#define CAP_TTS_CHUNK_MIN_FILL_PCT  50
 #define CAP_TTS_VOICE_LEN     32
 #define CAP_TTS_MODEL_LEN     64
 #define CAP_TTS_DIR_LEN       160
@@ -105,6 +113,8 @@ static esp_err_t cap_openai_tts_download_event_handler(esp_http_client_event_t *
         return ESP_OK;
     }
     if (fwrite(event->data, 1, (size_t)event->data_len, dl->file) != (size_t)event->data_len) {
+        ESP_LOGE(TAG, "TTS cache write failed after %u bytes: errno=%d",
+                 (unsigned int)dl->bytes_written, errno);
         dl->error = true;
         return ESP_FAIL;
     }
@@ -397,6 +407,111 @@ static const char *cap_openai_tts_resolve_send_cap(const char *channel, const ch
     return strcmp(extension, ".ogg") == 0 ? "tg_send_voice" : "tg_send_audio";
 }
 
+/* Length in bytes of the next chunk of text, at most max_len, preferring to
+ * end after a sentence/paragraph break, then after whitespace, then on a
+ * UTF-8 boundary. */
+static size_t cap_tts_next_chunk_len(const char *text, size_t max_len)
+{
+    size_t window;
+    size_t min_end;
+    size_t whitespace_end = 0;
+
+    if (strlen(text) <= max_len) {
+        return strlen(text);
+    }
+
+    window = claw_utils_utf8_prefix_len(text, max_len);
+    min_end = window * CAP_TTS_CHUNK_MIN_FILL_PCT / 100;
+    for (size_t i = window; i > min_end; i--) {
+        char prev = text[i - 1];
+        char cur = text[i];
+
+        if (prev == '\n' || ((prev == '.' || prev == '!' || prev == '?') && (cur == ' ' || cur == '\n'))) {
+            return i;
+        }
+        if (whitespace_end == 0 && (cur == ' ' || cur == '\n')) {
+            whitespace_end = i;
+        }
+    }
+    return whitespace_end > 0 ? whitespace_end : window;
+}
+
+/* Copies text[0..len) without leading/trailing whitespace. */
+static char *cap_tts_dup_trimmed(const char *text, size_t len)
+{
+    char *out;
+
+    while (len > 0 && isspace((unsigned char)*text)) {
+        text++;
+        len--;
+    }
+    while (len > 0 && isspace((unsigned char)text[len - 1])) {
+        len--;
+    }
+    out = malloc(len + 1);
+    if (!out) {
+        return NULL;
+    }
+    memcpy(out, text, len);
+    out[len] = '\0';
+    return out;
+}
+
+static esp_err_t cap_openai_tts_speak_chunk(const char *channel,
+                                            const char *chat_id,
+                                            const char *text,
+                                            char *output,
+                                            size_t output_size)
+{
+    const char *extension = NULL;
+    const char *send_cap;
+    char path[CAP_TTS_PATH_LEN] = {0};
+    cJSON *send_input;
+    char *send_input_json;
+    claw_cap_call_context_t send_ctx = {0};
+    esp_err_t err;
+
+    err = cap_openai_tts_synthesize(text, path, sizeof(path), &extension);
+    if (err != ESP_OK) {
+        snprintf(output, output_size, "Error: TTS synthesis failed (%s)", esp_err_to_name(err));
+        return err;
+    }
+
+    send_cap = cap_openai_tts_resolve_send_cap(channel, extension);
+    if (!send_cap) {
+        remove(path);
+        snprintf(output, output_size, "Error: voice replies are not supported on channel %s", channel);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    send_input = cJSON_CreateObject();
+    if (!send_input) {
+        remove(path);
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddStringToObject(send_input, "chat_id", chat_id);
+    cJSON_AddStringToObject(send_input, "path", path);
+    send_input_json = cJSON_PrintUnformatted(send_input);
+    cJSON_Delete(send_input);
+    if (!send_input_json) {
+        remove(path);
+        return ESP_ERR_NO_MEM;
+    }
+
+    send_ctx.channel = channel;
+    send_ctx.chat_id = chat_id;
+    send_ctx.source_cap = "cap_openai_tts";
+    send_ctx.caller = CLAW_CAP_CALLER_SYSTEM;
+    err = claw_cap_call(send_cap, send_input_json, &send_ctx, output, output_size);
+    free(send_input_json);
+    remove(path);
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to send TTS audio via %s: %s", send_cap, esp_err_to_name(err));
+    }
+    return err;
+}
+
 static esp_err_t cap_openai_tts_execute(const char *input_json,
                                         const claw_cap_call_context_t *ctx,
                                         char *output,
@@ -409,13 +524,9 @@ static esp_err_t cap_openai_tts_execute(const char *input_json,
     const char *text = NULL;
     const char *chat_id = NULL;
     const char *channel = NULL;
-    const char *extension = NULL;
-    const char *send_cap = NULL;
-    char path[CAP_TTS_PATH_LEN] = {0};
-    cJSON *send_input = NULL;
-    char *send_input_json = NULL;
-    claw_cap_call_context_t send_ctx = {0};
-    esp_err_t err;
+    size_t max_chunk_len;
+    int chunks_sent = 0;
+    esp_err_t err = ESP_OK;
 
     root = cJSON_Parse(input_json ? input_json : "{}");
     if (!root) {
@@ -450,51 +561,45 @@ static esp_err_t cap_openai_tts_execute(const char *input_json,
 
     cap_openai_tts_send_waiting_message(channel, chat_id);
 
-    err = cap_openai_tts_synthesize(text, path, sizeof(path), &extension);
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        snprintf(output, output_size, "Error: TTS synthesis failed (%s)", esp_err_to_name(err));
-        return err;
-    }
+    max_chunk_len = cap_tts_is_groq() ? CAP_TTS_MAX_TEXT_LEN_GROQ : CAP_TTS_MAX_TEXT_LEN_OPENAI;
+    while (*text && chunks_sent < CAP_TTS_MAX_CHUNKS) {
+        size_t chunk_len = cap_tts_next_chunk_len(text, max_chunk_len);
+        char *chunk = cap_tts_dup_trimmed(text, chunk_len);
 
-    send_cap = cap_openai_tts_resolve_send_cap(channel, extension);
-    if (!send_cap) {
-        remove(path);
-        cJSON_Delete(root);
-        snprintf(output, output_size, "Error: voice replies are not supported on channel %s", channel);
-        return ESP_ERR_NOT_SUPPORTED;
+        text += chunk_len;
+        if (!chunk) {
+            err = ESP_ERR_NO_MEM;
+            break;
+        }
+        if (chunk[0] == '\0') {
+            free(chunk);
+            continue;
+        }
+        err = cap_openai_tts_speak_chunk(channel, chat_id, chunk, output, output_size);
+        free(chunk);
+        if (err != ESP_OK) {
+            break;
+        }
+        chunks_sent++;
     }
-
-    send_input = cJSON_CreateObject();
-    if (!send_input) {
-        remove(path);
-        cJSON_Delete(root);
-        return ESP_ERR_NO_MEM;
-    }
-    cJSON_AddStringToObject(send_input, "chat_id", chat_id);
-    cJSON_AddStringToObject(send_input, "path", path);
-    send_input_json = cJSON_PrintUnformatted(send_input);
-    cJSON_Delete(send_input);
     cJSON_Delete(root);
-    if (!send_input_json) {
-        remove(path);
-        return ESP_ERR_NO_MEM;
-    }
-
-    send_ctx.channel = channel;
-    send_ctx.chat_id = chat_id;
-    send_ctx.source_cap = "cap_openai_tts";
-    send_ctx.caller = CLAW_CAP_CALLER_SYSTEM;
-    err = claw_cap_call(send_cap, send_input_json, &send_ctx, output, output_size);
-    free(send_input_json);
-    remove(path);
 
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to send TTS audio via %s: %s", send_cap, esp_err_to_name(err));
+        if (chunks_sent > 0) {
+            ESP_LOGW(TAG, "TTS stopped after %d chunk(s): %s", chunks_sent, esp_err_to_name(err));
+            snprintf(output, output_size, "voice reply partially sent (%d part(s)); then failed: %s",
+                     chunks_sent, esp_err_to_name(err));
+        }
         return err;
     }
 
-    snprintf(output, output_size, "voice reply already sent to user");
+    if (*text) {
+        snprintf(output, output_size,
+                 "voice reply sent in %d part(s); the rest of the text was too long and was not spoken",
+                 chunks_sent);
+    } else {
+        snprintf(output, output_size, "voice reply already sent to user (%d part(s))", chunks_sent);
+    }
     return ESP_OK;
 }
 
@@ -504,7 +609,8 @@ static const claw_cap_descriptor_t s_tts_descriptors[] = {
         .name = "tts_speak",
         .family = "system",
         .description = "Synthesize speech for text via the configured TTS provider (OpenAI or Groq) "
-                       "and send it back to the chat as a voice/audio message.",
+                       "and send it back to the chat as voice/audio message(s). Long text is split "
+                       "automatically into several consecutive audios, so pass the full text.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
