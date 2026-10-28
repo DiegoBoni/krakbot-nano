@@ -1,5 +1,30 @@
 [
   {
+    "id": "im_session_menu_command",
+    "description": "Session manager with a button menu (new, switch, delete). Takes over /session from im_session_command.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} session menu handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/session",
+      "text_match_rule": "prefix"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "session_menu",
+        "input": {
+          "command": "{{match.remainder}}",
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
     "id": "im_session_command",
     "description": "Handle persistent chat session commands when the user sends /session.",
     "enabled": true,

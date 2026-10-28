@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/cap_session_mgr.c"
+        "src/cap_session_menu.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

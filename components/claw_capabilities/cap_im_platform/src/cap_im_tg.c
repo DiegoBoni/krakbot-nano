@@ -47,6 +47,13 @@ static const char *TAG = "cap_im_tg";
 #define CAP_IM_TG_TTS_CACHE_SIZE      8
 #define CAP_IM_TG_TTS_QUEUE_LEN       4
 #define CAP_IM_TG_STAGE_MSG_CAP       12
+#define CAP_IM_TG_STAGE_TEXT_LEN      96
+/* "Working" animation: the newest status message of a chat is edited with a
+ * walking crab and an elapsed-seconds counter, and Telegram's own "typing..."
+ * indicator is kept alive, so a slow reply does not look like a frozen bot. */
+#define CAP_IM_TG_ANIM_INTERVAL_MS    3000
+#define CAP_IM_TG_ANIM_TRACK_WIDTH    8
+#define CAP_IM_TG_ANIM_MAX_MS         (5 * 60 * 1000)
 
 typedef struct {
     char *buf;
@@ -87,6 +94,9 @@ typedef struct {
 typedef struct {
     char chat_id[32];
     int64_t message_id;
+    char text[CAP_IM_TG_STAGE_TEXT_LEN]; /**< Original status text; the animation line is appended to it */
+    int64_t started_ms;
+    bool animate;                        /**< Only the newest stage message of a chat is animated */
 } cap_im_tg_stage_msg_t;
 
 typedef struct {
@@ -98,6 +108,7 @@ typedef struct {
     TaskHandle_t poll_task;
     TaskHandle_t attachment_task;
     TaskHandle_t tts_task;
+    TaskHandle_t anim_task;
     QueueHandle_t attachment_queue;
     QueueHandle_t tts_queue;
     volatile bool stop_requested;
@@ -1347,34 +1358,147 @@ static esp_err_t cap_im_tg_delete_message(const char *chat_id, int64_t message_i
 /* Stage/status updates (agent_stage events) are tracked per chat so they can
  * be deleted the moment the real reply (out_message) is sent, mimicking
  * Telegram's own ephemeral "typing..." indicator but with custom text. */
-static void cap_im_tg_track_stage_message(const char *chat_id, int64_t message_id)
+static portMUX_TYPE s_tg_stage_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void cap_im_tg_track_stage_message(const char *chat_id, int64_t message_id, const char *text)
 {
     cap_im_tg_stage_msg_t *slot;
 
     if (!chat_id || !chat_id[0] || message_id <= 0) {
         return;
     }
+    taskENTER_CRITICAL(&s_tg_stage_lock);
+    for (size_t i = 0; i < CAP_IM_TG_STAGE_MSG_CAP; i++) {
+        if (strcmp(s_tg.stage_msgs[i].chat_id, chat_id) == 0) {
+            s_tg.stage_msgs[i].animate = false;
+        }
+    }
     slot = &s_tg.stage_msgs[s_tg.stage_msg_idx % CAP_IM_TG_STAGE_MSG_CAP];
     strlcpy(slot->chat_id, chat_id, sizeof(slot->chat_id));
+    strlcpy(slot->text, text ? text : "", sizeof(slot->text));
     slot->message_id = message_id;
+    slot->started_ms = esp_timer_get_time() / 1000;
+    slot->animate = true;
     s_tg.stage_msg_idx++;
+    taskEXIT_CRITICAL(&s_tg_stage_lock);
 }
 
 static void cap_im_tg_clear_stage_messages(const char *chat_id)
 {
-    size_t i;
+    int64_t doomed[CAP_IM_TG_STAGE_MSG_CAP];
+    size_t doomed_count = 0;
 
     if (!chat_id || !chat_id[0]) {
         return;
     }
-    for (i = 0; i < CAP_IM_TG_STAGE_MSG_CAP; i++) {
+    taskENTER_CRITICAL(&s_tg_stage_lock);
+    for (size_t i = 0; i < CAP_IM_TG_STAGE_MSG_CAP; i++) {
         if (s_tg.stage_msgs[i].message_id > 0 &&
                 strcmp(s_tg.stage_msgs[i].chat_id, chat_id) == 0) {
-            cap_im_tg_delete_message(chat_id, s_tg.stage_msgs[i].message_id);
+            doomed[doomed_count++] = s_tg.stage_msgs[i].message_id;
             s_tg.stage_msgs[i].message_id = 0;
             s_tg.stage_msgs[i].chat_id[0] = '\0';
+            s_tg.stage_msgs[i].animate = false;
         }
     }
+    taskEXIT_CRITICAL(&s_tg_stage_lock);
+    for (size_t i = 0; i < doomed_count; i++) {
+        cap_im_tg_delete_message(chat_id, doomed[i]);
+    }
+}
+
+/* Builds "<status>\n·····🦀··  12s": a crab bouncing along a track. */
+static void cap_im_tg_build_animation_text(const cap_im_tg_stage_msg_t *slot,
+                                           int64_t now_ms,
+                                           char *out,
+                                           size_t out_size)
+{
+    int64_t elapsed_s = (now_ms - slot->started_ms) / 1000;
+    int cycle = (CAP_IM_TG_ANIM_TRACK_WIDTH - 1) * 2;
+    int step = (int)((elapsed_s * 1000 / CAP_IM_TG_ANIM_INTERVAL_MS) % cycle);
+    int crab_at = step < CAP_IM_TG_ANIM_TRACK_WIDTH ? step : cycle - step;
+    size_t used = (size_t)snprintf(out, out_size, "%s\n", slot->text);
+
+    for (int cell = 0; cell < CAP_IM_TG_ANIM_TRACK_WIDTH && used < out_size; cell++) {
+        used += (size_t)snprintf(out + used, out_size - used, "%s",
+                                 cell == crab_at ? "\xf0\x9f\xa6\x80" : "\xc2\xb7");
+    }
+    if (used < out_size) {
+        snprintf(out + used, out_size - used, "  %" PRId64 "s", elapsed_s);
+    }
+}
+
+static void cap_im_tg_animate_slot(const cap_im_tg_stage_msg_t *slot, int64_t now_ms, bool send_typing)
+{
+    char text[CAP_IM_TG_STAGE_TEXT_LEN + 64];
+    cJSON *body = cJSON_CreateObject();
+    char *body_json = NULL;
+    char *resp = NULL;
+
+    if (!body) {
+        return;
+    }
+    if (send_typing) {
+        cJSON_AddStringToObject(body, "chat_id", slot->chat_id);
+        cJSON_AddStringToObject(body, "action", "typing");
+        body_json = cJSON_PrintUnformatted(body);
+        if (body_json) {
+            (void)cap_im_tg_api_call("sendChatAction", body_json, &resp);
+            free(body_json);
+            free(resp);
+            resp = NULL;
+        }
+        cJSON_Delete(body);
+        body = cJSON_CreateObject();
+        if (!body) {
+            return;
+        }
+    }
+    cap_im_tg_build_animation_text(slot, now_ms, text, sizeof(text));
+    cJSON_AddStringToObject(body, "chat_id", slot->chat_id);
+    cJSON_AddNumberToObject(body, "message_id", (double)slot->message_id);
+    cJSON_AddStringToObject(body, "text", text);
+    body_json = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+    if (body_json) {
+        /* Fails harmlessly when the reply already deleted the message. */
+        (void)cap_im_tg_api_call("editMessageText", body_json, &resp);
+        free(body_json);
+        free(resp);
+    }
+}
+
+static void cap_im_tg_anim_task(void *arg)
+{
+    /* Single instance, so one shared snapshot keeps ~1.8 KB off the task stack. */
+    static cap_im_tg_stage_msg_t snapshot[CAP_IM_TG_STAGE_MSG_CAP];
+
+    (void)arg;
+
+    while (!s_tg.stop_requested) {
+        int64_t now_ms;
+
+        vTaskDelay(pdMS_TO_TICKS(CAP_IM_TG_ANIM_INTERVAL_MS));
+        now_ms = esp_timer_get_time() / 1000;
+        taskENTER_CRITICAL(&s_tg_stage_lock);
+        memcpy(snapshot, s_tg.stage_msgs, sizeof(snapshot));
+        for (size_t i = 0; i < CAP_IM_TG_STAGE_MSG_CAP; i++) {
+            if (s_tg.stage_msgs[i].animate && now_ms - s_tg.stage_msgs[i].started_ms > CAP_IM_TG_ANIM_MAX_MS) {
+                s_tg.stage_msgs[i].animate = false;
+            }
+        }
+        taskEXIT_CRITICAL(&s_tg_stage_lock);
+
+        for (size_t i = 0; i < CAP_IM_TG_STAGE_MSG_CAP && !s_tg.stop_requested; i++) {
+            if (snapshot[i].animate && snapshot[i].message_id > 0 &&
+                    now_ms - snapshot[i].started_ms <= CAP_IM_TG_ANIM_MAX_MS) {
+                cap_im_tg_animate_slot(&snapshot[i], now_ms, true);
+            }
+        }
+    }
+
+    s_tg.anim_task = NULL;
+    claw_task_delete(NULL);
 }
 
 static const char *cap_im_tg_basename(const char *path)
@@ -1884,6 +2008,21 @@ static esp_err_t cap_im_tg_gateway_start(void)
         return ESP_FAIL;
     }
 
+    /* The animation is cosmetic: a failure to start it must not stop the gateway. */
+    if (claw_task_create(&(claw_task_config_t){
+                             .name = "tg_anim",
+                             .stack_size = 6144,
+                             .priority = 4,
+                             .core_id = tskNO_AFFINITY,
+                             .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                         },
+                         cap_im_tg_anim_task,
+                         NULL,
+                         &s_tg.anim_task) != pdPASS) {
+        s_tg.anim_task = NULL;
+        ESP_LOGW(TAG, "Could not start the status animation task");
+    }
+
     return ESP_OK;
 }
 
@@ -1918,6 +2057,10 @@ static esp_err_t cap_im_tg_gateway_stop(void)
 
     if (s_tg.tts_task) {
         return ESP_ERR_TIMEOUT;
+    }
+
+    while (s_tg.anim_task && xTaskGetTickCount() < deadline) {
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     if (s_tg.attachment_queue) {
@@ -2087,7 +2230,7 @@ static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
     err = cap_im_tg_send_text_ex(chat_id, message, attach_tts_button,
                                  is_stage_message ? &sent_message_id : NULL);
     if (err == ESP_OK && is_stage_message) {
-        cap_im_tg_track_stage_message(chat_id, sent_message_id);
+        cap_im_tg_track_stage_message(chat_id, sent_message_id, message);
     }
     cJSON_Delete(root);
     if (err != ESP_OK) {

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "cap_session_mgr.h"
+#include "cap_session_menu.h"
 
 #include <stdbool.h>
 #include <stdarg.h>
@@ -465,6 +466,17 @@ static const claw_cap_descriptor_t s_session_mgr_caps[] = {
         .cap_flags = CLAW_CAP_FLAG_RESTRICTED,
         .input_schema_json = "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}}}",
         .execute = cap_session_mgr_session_execute,
+    },
+    {
+        .id = "session_menu",
+        .name = "session_menu",
+        .family = "system",
+        .description = "Handle /session chat commands with a button menu (Telegram) or plain text.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_RESTRICTED,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"channel\":{\"type\":\"string\"},\"chat_id\":{\"type\":\"string\"}},\"required\":[\"channel\",\"chat_id\"]}",
+        .execute = cap_session_menu_execute,
     },
 };
 

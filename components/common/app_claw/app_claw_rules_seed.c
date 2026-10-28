@@ -19,16 +19,21 @@ static const char *TAG = "app_claw_rules_seed";
 #define APP_CLAW_SEED_PATH_LEN      128
 #define APP_CLAW_FALLTHROUGH_RULE   "im_any_message_agent"
 
-/* Rules added to the seed after the first firmware releases. */
-static const char *const s_seed_rule_ids[] = {
-    "im_help_command",
-    "im_start_command",
-    "im_new_command",
-    "im_status_command",
-    "im_web_command",
-    "im_tasks_command",
-    "im_digest_command",
-    "im_mcp_command",
+/* Rules added to the seed after the first firmware releases. A rule is
+ * inserted before insert_before_id; NULL means before the catch-all agent rule. */
+static const struct {
+    const char *id;
+    const char *insert_before_id;
+} s_seed_rules[] = {
+    { "im_session_menu_command", "im_session_command" },
+    { "im_help_command", NULL },
+    { "im_start_command", NULL },
+    { "im_new_command", NULL },
+    { "im_status_command", NULL },
+    { "im_web_command", NULL },
+    { "im_tasks_command", NULL },
+    { "im_digest_command", NULL },
+    { "im_mcp_command", NULL },
 };
 
 static cJSON *app_claw_seed_read_json(const char *path)
@@ -111,17 +116,20 @@ void app_claw_router_rules_merge_seed(const char *rules_path)
         goto cleanup;
     }
 
-    for (size_t i = 0; i < sizeof(s_seed_rule_ids) / sizeof(s_seed_rule_ids[0]); i++) {
-        cJSON *rule = app_claw_seed_find_rule(seed, s_seed_rule_ids[i], NULL);
-        int fallthrough_index = 0;
+    for (size_t i = 0; i < sizeof(s_seed_rules) / sizeof(s_seed_rules[0]); i++) {
+        cJSON *rule = app_claw_seed_find_rule(seed, s_seed_rules[i].id, NULL);
+        const char *before_id = s_seed_rules[i].insert_before_id ? s_seed_rules[i].insert_before_id
+                                : APP_CLAW_FALLTHROUGH_RULE;
+        int before_index = 0;
         int insert_at = 0;
 
-        if (!rule || app_claw_seed_find_rule(data, s_seed_rule_ids[i], NULL)) {
+        if (!rule || app_claw_seed_find_rule(data, s_seed_rules[i].id, NULL)) {
             continue;
         }
-        /* Command rules must run before the catch-all rule that forwards text to the agent. */
-        insert_at = app_claw_seed_find_rule(data, APP_CLAW_FALLTHROUGH_RULE, &fallthrough_index)
-                    ? fallthrough_index : cJSON_GetArraySize(data);
+        /* Command rules must run before the rule they take over, or before the
+         * catch-all rule that forwards text to the agent. */
+        insert_at = app_claw_seed_find_rule(data, before_id, &before_index)
+                    ? before_index : cJSON_GetArraySize(data);
         cJSON_InsertItemInArray(data, insert_at, cJSON_Duplicate(rule, true));
         added++;
     }
