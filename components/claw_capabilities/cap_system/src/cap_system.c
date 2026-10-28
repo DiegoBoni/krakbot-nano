@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "cap_system.h"
+#include "cap_system_chat.h"
 
 #include <stdbool.h>
 #include <inttypes.h>
@@ -965,7 +966,8 @@ esp_err_t cap_system_register_group(void)
     esp_err_t err = claw_cap_register_group(&s_system_group);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "register group failed: %s", esp_err_to_name(err));
+        return err;
     }
 
-    return err;
+    return cap_system_chat_register_group();
 }

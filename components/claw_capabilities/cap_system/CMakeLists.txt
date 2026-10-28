@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/cap_system.c"
+        "src/cap_system_chat.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
@@ -8,6 +9,7 @@ idf_component_register(
         claw_core
         esp_netif
         esp_wifi
+        espressif__mdns
     PRIV_REQUIRES
         esp_app_format
         esp_timer

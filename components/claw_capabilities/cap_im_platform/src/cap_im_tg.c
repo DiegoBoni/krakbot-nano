@@ -1652,9 +1652,44 @@ static esp_err_t cap_im_tg_send_audio(const char *chat_id, const char *path)
     return ESP_OK;
 }
 
+/* Command menu shown by Telegram when the user types "/". Keep in sync with the
+ * chat command rules in the router rules seed. Descriptions: 3-256 chars. */
+static const char *const s_tg_commands_json =
+    "{\"commands\":["
+    "{\"command\":\"new\",\"description\":\"Start a fresh conversation\"},"
+    "{\"command\":\"session\",\"description\":\"List or switch conversations\"},"
+    "{\"command\":\"llm\",\"description\":\"Show or change the AI model\"},"
+    "{\"command\":\"cost\",\"description\":\"Token usage and approximate cost\"},"
+    "{\"command\":\"status\",\"description\":\"Wi-Fi, memory, uptime and clock\"},"
+    "{\"command\":\"web\",\"description\":\"Link to the settings page\"},"
+    "{\"command\":\"tasks\",\"description\":\"Scheduled jobs and next run\"},"
+    "{\"command\":\"digest\",\"description\":\"Send the daily summary now\"},"
+    "{\"command\":\"help\",\"description\":\"List all commands\"}"
+    "]}";
+
+#define CAP_IM_TG_MENU_ATTEMPTS 3
+
+static void cap_im_tg_publish_command_menu(void)
+{
+    for (int attempt = 0; attempt < CAP_IM_TG_MENU_ATTEMPTS && !s_tg.stop_requested; attempt++) {
+        char *response = NULL;
+        esp_err_t err = cap_im_tg_api_call("setMyCommands", s_tg_commands_json, &response);
+
+        free(response);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Telegram command menu published");
+            return;
+        }
+        ESP_LOGW(TAG, "setMyCommands failed: %s", esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(CAP_IM_TG_RETRY_DELAY_MS));
+    }
+}
+
 static void cap_im_tg_poll_task(void *arg)
 {
     (void)arg;
+
+    cap_im_tg_publish_command_menu();
 
     while (!s_tg.stop_requested) {
         if (cap_im_tg_poll_once() != ESP_OK) {

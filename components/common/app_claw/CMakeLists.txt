@@ -2,6 +2,7 @@
 set(app_claw_srcs
     "app_claw.c"
     "app_capabilities.c"
+    "app_claw_rules_seed.c"
     "app_lua_modules.c"
 )
 

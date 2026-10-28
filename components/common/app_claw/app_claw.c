@@ -6,6 +6,7 @@
 #include "app_claw.h"
 #include "app_claw_cli.h"
 #include "app_capabilities.h"
+#include "app_claw_rules_seed.h"
 #if CONFIG_APP_CLAW_SYSTEM_UI_ENABLE
 #include "system_ui.h"
 #endif
@@ -1164,6 +1165,7 @@ esp_err_t app_claw_start(const app_claw_config_t *config)
     app_claw_migrate_router_rules_add_audio_transcribe(paths.router_rules_path);
     app_claw_migrate_router_rules_add_image_inspect(paths.router_rules_path);
     app_claw_migrate_router_rules_add_document_inspect(paths.router_rules_path);
+    app_claw_router_rules_merge_seed(paths.router_rules_path);
     router_config.default_route_messages_to_agent = true;
     router_config.rules_path = paths.router_rules_path;
 #endif

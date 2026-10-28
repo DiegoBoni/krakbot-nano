@@ -204,6 +204,206 @@
     ]
   },
   {
+    "id": "im_help_command",
+    "description": "List the chat slash commands.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} help command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/help",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_help",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_start_command",
+    "description": "Telegram /start shows the command list.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} start command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/start",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_help",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_new_command",
+    "description": "Start a fresh conversation (shortcut for /session new).",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} new command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/new",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "session_command",
+        "input": {
+          "command": "new"
+        }
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_status_command",
+    "description": "Show a short device status.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} status command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/status",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_status",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_web_command",
+    "description": "Show the URL of the device settings page.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} web command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/web",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_web_url",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_tasks_command",
+    "description": "List scheduled tasks and their next run.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} tasks command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/tasks",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_tasks",
+        "input": {}
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
+    "id": "im_digest_command",
+    "description": "Run the daily summary schedule now.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} digest command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/digest",
+      "text_match_rule": "exact"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "chat_run_task",
+        "input": {
+          "id": "daily_morning_digest_audio"
+        }
+      },
+      {
+        "type": "send_message",
+        "input": {
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
     "id": "im_any_message_agent",
     "description": "Route IM text messages to the agent.",
     "enabled": true,
