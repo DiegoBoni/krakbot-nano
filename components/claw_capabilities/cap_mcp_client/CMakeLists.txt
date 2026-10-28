@@ -4,6 +4,7 @@ idf_component_register(
         "src/cap_mcp_client_core.c"
         "src/cap_mcp_discover_core.c"
         "src/cap_mcp_registry.c"
+        "src/cap_mcp_menu.c"
     INCLUDE_DIRS
         "include"
     PRIV_INCLUDE_DIRS

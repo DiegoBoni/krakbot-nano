@@ -10,6 +10,7 @@
 #include "claw_cap.h"
 
 #include "cap_mcp_client.h"
+#include "cap_mcp_menu.h"
 #include "cap_mcp_client_priv.h"
 
 static esp_err_t cap_mcp_client_group_init(void)
@@ -386,11 +387,17 @@ static const claw_cap_group_t s_mcp_client_group = {
 
 esp_err_t cap_mcp_client_register_group(void)
 {
+    esp_err_t err;
+
     if (claw_cap_group_exists(s_mcp_client_group.group_id)) {
         return ESP_OK;
     }
 
-    return claw_cap_register_group(&s_mcp_client_group);
+    err = claw_cap_register_group(&s_mcp_client_group);
+    if (err != ESP_OK) {
+        return err;
+    }
+    return cap_mcp_menu_register_group();
 }
 
 esp_err_t cap_mcp_client_test_server(const char *server_id, char *message, size_t message_size)

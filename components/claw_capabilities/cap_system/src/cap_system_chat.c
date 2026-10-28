@@ -43,6 +43,7 @@ static const char *const s_chat_help_text =
     "/new - start a fresh conversation\n"
     "/session - list or switch conversations\n"
     "/llm - show or change the AI model (/llm status)\n"
+    "/mcp - manage MCP servers (add, test, tools)\n"
     "/cost - token usage and approximate cost\n"
     "/status - Wi-Fi, memory, uptime and clock\n"
     "/web - link to the settings page\n"

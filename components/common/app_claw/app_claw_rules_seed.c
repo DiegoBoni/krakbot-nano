@@ -28,6 +28,7 @@ static const char *const s_seed_rule_ids[] = {
     "im_web_command",
     "im_tasks_command",
     "im_digest_command",
+    "im_mcp_command",
 };
 
 static cJSON *app_claw_seed_read_json(const char *path)

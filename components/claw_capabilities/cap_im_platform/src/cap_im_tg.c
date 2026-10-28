@@ -892,6 +892,40 @@ static void cap_im_tg_queue_attachment(const char *chat_id,
     }
 }
 
+#define CAP_IM_TG_CMD_CALLBACK_PREFIX "cmd:"
+
+/* A tap on a button whose data is "cmd:<text>" behaves as if the user had typed
+ * <text> in the chat, so menus can be built out of ordinary slash commands. */
+static void cap_im_tg_handle_command_callback(cJSON *callback_query_json,
+                                              const char *callback_id,
+                                              const char *command,
+                                              int64_t update_id)
+{
+    cJSON *message_json = cJSON_GetObjectItem(callback_query_json, "message");
+    cJSON *chat_json = cJSON_IsObject(message_json) ? cJSON_GetObjectItem(message_json, "chat") : NULL;
+    cJSON *chat_id_json = cJSON_IsObject(chat_json) ? cJSON_GetObjectItem(chat_json, "id") : NULL;
+    cJSON *from_json = cJSON_GetObjectItem(callback_query_json, "from");
+    cJSON *from_id_json = cJSON_IsObject(from_json) ? cJSON_GetObjectItem(from_json, "id") : NULL;
+    char chat_id[32];
+    char sender_id[32];
+    char message_id[32];
+
+    cap_im_tg_answer_callback_query(callback_id, NULL);
+    if (!command[0] || !cJSON_IsNumber(chat_id_json)) {
+        return;
+    }
+    snprintf(chat_id, sizeof(chat_id), "%" PRId64, (int64_t)chat_id_json->valuedouble);
+    if (!cap_im_tg_id_allowed(chat_id, NULL)) {
+        return;
+    }
+    snprintf(sender_id, sizeof(sender_id), "%" PRId64,
+             cJSON_IsNumber(from_id_json) ? (int64_t)from_id_json->valuedouble : (int64_t)chat_id_json->valuedouble);
+    snprintf(message_id, sizeof(message_id), "cb%" PRId64, update_id);
+    if (cap_im_tg_publish_inbound_text(chat_id, sender_id, message_id, command) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to publish Telegram button command");
+    }
+}
+
 static void cap_im_tg_handle_callback_query(cJSON *callback_query_json, int64_t update_id)
 {
     cJSON *id_json = cJSON_GetObjectItem(callback_query_json, "id");
@@ -905,7 +939,12 @@ static void cap_im_tg_handle_callback_query(cJSON *callback_query_json, int64_t 
     char *text = NULL;
     uint32_t tts_id;
 
-    (void)update_id;
+    if (data && strncmp(data, CAP_IM_TG_CMD_CALLBACK_PREFIX, strlen(CAP_IM_TG_CMD_CALLBACK_PREFIX)) == 0 &&
+            cJSON_IsNumber(chat_id_json)) {
+        cap_im_tg_handle_command_callback(callback_query_json, callback_id,
+                                          data + strlen(CAP_IM_TG_CMD_CALLBACK_PREFIX), update_id);
+        return;
+    }
 
     if (!data || strncmp(data, "tts:", 4) != 0 || !cJSON_IsNumber(chat_id_json)) {
         cap_im_tg_answer_callback_query(callback_id, NULL);
@@ -1170,6 +1209,41 @@ static esp_err_t cap_im_tg_poll_once(void)
 
     cJSON_Delete(root);
     return ESP_OK;
+}
+
+/* Telegram caps callback_data at 64 bytes, including our "cmd:" prefix. */
+#define CAP_IM_TG_CALLBACK_DATA_MAX   64
+#define CAP_IM_TG_MENU_TEXT_MAX       3900
+
+static esp_err_t cap_im_tg_post_with_retry(const char *method, const char *body_json, char **out_response)
+{
+    esp_err_t err = ESP_FAIL;
+
+    for (int attempt = 0; attempt < CAP_IM_TG_SEND_MAX_ATTEMPTS; attempt++) {
+        err = cap_im_tg_api_call(method, body_json, out_response);
+        if (err == ESP_OK) {
+            break;
+        }
+        if (attempt + 1 < CAP_IM_TG_SEND_MAX_ATTEMPTS) {
+            ESP_LOGW(TAG, "Telegram %s attempt %d failed (%s), retrying",
+                     method, attempt + 1, esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(CAP_IM_TG_SEND_RETRY_DELAY_MS));
+        }
+    }
+    return err;
+}
+
+/* Copy of text cut on a UTF-8 boundary so the message fits one Telegram message. */
+static char *cap_im_tg_menu_bounded_text(const char *text)
+{
+    size_t len = claw_utils_utf8_prefix_len(text, CAP_IM_TG_MENU_TEXT_MAX);
+    char *out = malloc(len + 1);
+
+    if (out) {
+        memcpy(out, text, len);
+        out[len] = '\0';
+    }
+    return out;
 }
 
 static esp_err_t cap_im_tg_send_text_chunk_ex(const char *chat_id,
@@ -1659,6 +1733,7 @@ static const char *const s_tg_commands_json =
     "{\"command\":\"new\",\"description\":\"Start a fresh conversation\"},"
     "{\"command\":\"session\",\"description\":\"List or switch conversations\"},"
     "{\"command\":\"llm\",\"description\":\"Show or change the AI model\"},"
+    "{\"command\":\"mcp\",\"description\":\"Manage MCP servers (add, test, tools)\"},"
     "{\"command\":\"cost\",\"description\":\"Token usage and approximate cost\"},"
     "{\"command\":\"status\",\"description\":\"Wi-Fi, memory, uptime and clock\"},"
     "{\"command\":\"web\",\"description\":\"Link to the settings page\"},"
@@ -1872,6 +1947,85 @@ static esp_err_t cap_im_tg_gateway_stop(void)
     }
 
     return ESP_OK;
+}
+
+static esp_err_t cap_im_tg_send_menu_execute(const char *input_json,
+                                             const claw_cap_call_context_t *ctx,
+                                             char *output,
+                                             size_t output_size)
+{
+    cJSON *root = cJSON_Parse(input_json ? input_json : "{}");
+    const cJSON *chat_id_json = root ? cJSON_GetObjectItem(root, "chat_id") : NULL;
+    const cJSON *text_json = root ? cJSON_GetObjectItem(root, "text") : NULL;
+    const cJSON *buttons_json = root ? cJSON_GetObjectItem(root, "buttons") : NULL;
+    const char *chat_id = cJSON_IsString(chat_id_json) && chat_id_json->valuestring[0] ? chat_id_json->valuestring
+                          : (ctx ? ctx->chat_id : NULL);
+    cJSON *body = NULL;
+    cJSON *keyboard = NULL;
+    cJSON *rows = NULL;
+    const cJSON *row_json = NULL;
+    char *body_json = NULL;
+    char *resp = NULL;
+    char *text = NULL;
+    esp_err_t err;
+
+    if (!chat_id || !chat_id[0] || !cJSON_IsString(text_json) || !text_json->valuestring[0]) {
+        cJSON_Delete(root);
+        snprintf(output, output_size, "Error: chat_id and text are required");
+        return ESP_ERR_INVALID_ARG;
+    }
+    text = cap_im_tg_menu_bounded_text(text_json->valuestring);
+    body = cJSON_CreateObject();
+    keyboard = cJSON_CreateObject();
+    rows = keyboard ? cJSON_AddArrayToObject(keyboard, "inline_keyboard") : NULL;
+    if (!text || !body || !rows) {
+        free(text);
+        cJSON_Delete(body);
+        cJSON_Delete(keyboard);
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_ArrayForEach(row_json, buttons_json) {
+        cJSON *row = cJSON_CreateArray();
+        const cJSON *button_json = NULL;
+
+        if (!row) {
+            continue;
+        }
+        cJSON_ArrayForEach(button_json, row_json) {
+            const cJSON *label = cJSON_GetObjectItem(button_json, "text");
+            const cJSON *data = cJSON_GetObjectItem(button_json, "data");
+            char callback_data[CAP_IM_TG_CALLBACK_DATA_MAX + 1];
+            cJSON *button = NULL;
+
+            if (!cJSON_IsString(label) || !cJSON_IsString(data)) {
+                continue;
+            }
+            snprintf(callback_data, sizeof(callback_data), "%s%s", CAP_IM_TG_CMD_CALLBACK_PREFIX, data->valuestring);
+            button = cJSON_CreateObject();
+            if (button) {
+                cJSON_AddStringToObject(button, "text", label->valuestring);
+                cJSON_AddStringToObject(button, "callback_data", callback_data);
+                cJSON_AddItemToArray(row, button);
+            }
+        }
+        cJSON_AddItemToArray(rows, row);
+    }
+    cJSON_AddStringToObject(body, "chat_id", chat_id);
+    cJSON_AddStringToObject(body, "text", text);
+    cJSON_AddItemToObject(body, "reply_markup", keyboard);
+    body_json = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+    free(text);
+    cJSON_Delete(root);
+    if (!body_json) {
+        return ESP_ERR_NO_MEM;
+    }
+    err = cap_im_tg_post_with_retry("sendMessage", body_json, &resp);
+    free(body_json);
+    free(resp);
+    snprintf(output, output_size, "%s", err == ESP_OK ? "menu sent" : "Error: Telegram sendMessage failed");
+    return err;
 }
 
 static esp_err_t cap_im_tg_send_message_execute(const char *input_json,
@@ -2134,6 +2288,18 @@ static const claw_cap_descriptor_t s_tg_descriptors[] = {
         .input_schema_json =
         "{\"type\":\"object\",\"properties\":{\"chat_id\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"chat_id\",\"message\"]}",
         .execute = cap_im_tg_send_message_execute,
+    },
+    {
+        .id = "tg_send_menu",
+        .name = "tg_send_menu",
+        .family = "im",
+        .description = "Send a Telegram message with inline buttons. Each button's data is a chat command "
+                       "that is sent back as if the user typed it.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = 0,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"chat_id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"buttons\":{\"type\":\"array\"}},\"required\":[\"chat_id\",\"text\"]}",
+        .execute = cap_im_tg_send_menu_execute,
     },
     {
         .id = "tg_send_image",

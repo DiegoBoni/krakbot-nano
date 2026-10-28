@@ -404,6 +404,31 @@
     ]
   },
   {
+    "id": "im_mcp_command",
+    "description": "Interactive MCP server manager (list, add, test, tools) with Telegram buttons.",
+    "enabled": true,
+    "consume_on_match": true,
+    "ack": "{{event.source_channel}} mcp command handled",
+    "match": {
+      "event_type": "message",
+      "event_key": "text",
+      "content_type": "text",
+      "text": "/mcp",
+      "text_match_rule": "prefix"
+    },
+    "actions": [
+      {
+        "type": "call_cap",
+        "cap": "mcp_menu",
+        "input": {
+          "command": "{{match.remainder}}",
+          "channel": "{{event.source_channel}}",
+          "chat_id": "{{event.chat_id}}"
+        }
+      }
+    ]
+  },
+  {
     "id": "im_any_message_agent",
     "description": "Route IM text messages to the agent.",
     "enabled": true,
