@@ -1407,7 +1407,7 @@ static void cap_im_tg_clear_stage_messages(const char *chat_id)
     }
 }
 
-/* Builds "<status>\n·····🦀··  12s": a crab bouncing along a track. */
+/* Builds "<status>\n·····🐙··  12s": the octopus bouncing along a track. */
 static void cap_im_tg_build_animation_text(const cap_im_tg_stage_msg_t *slot,
                                            int64_t now_ms,
                                            char *out,
@@ -1416,12 +1416,12 @@ static void cap_im_tg_build_animation_text(const cap_im_tg_stage_msg_t *slot,
     int64_t elapsed_s = (now_ms - slot->started_ms) / 1000;
     int cycle = (CAP_IM_TG_ANIM_TRACK_WIDTH - 1) * 2;
     int step = (int)((elapsed_s * 1000 / CAP_IM_TG_ANIM_INTERVAL_MS) % cycle);
-    int crab_at = step < CAP_IM_TG_ANIM_TRACK_WIDTH ? step : cycle - step;
+    int octopus_at = step < CAP_IM_TG_ANIM_TRACK_WIDTH ? step : cycle - step;
     size_t used = (size_t)snprintf(out, out_size, "%s\n", slot->text);
 
     for (int cell = 0; cell < CAP_IM_TG_ANIM_TRACK_WIDTH && used < out_size; cell++) {
         used += (size_t)snprintf(out + used, out_size - used, "%s",
-                                 cell == crab_at ? "\xf0\x9f\xa6\x80" : "\xc2\xb7");
+                                 cell == octopus_at ? "\xf0\x9f\x90\x99" : "\xc2\xb7");
     }
     if (used < out_size) {
         snprintf(out + used, out_size - used, "  %" PRId64 "s", elapsed_s);
