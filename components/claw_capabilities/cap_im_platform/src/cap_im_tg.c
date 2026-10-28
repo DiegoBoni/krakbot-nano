@@ -49,7 +49,7 @@ static const char *TAG = "cap_im_tg";
 #define CAP_IM_TG_STAGE_MSG_CAP       12
 #define CAP_IM_TG_STAGE_TEXT_LEN      96
 /* "Working" animation: the newest status message of a chat is edited with a
- * walking crab and an elapsed-seconds counter, and Telegram's own "typing..."
+ * walking octopus and an elapsed-seconds counter, and Telegram's own "typing..."
  * indicator is kept alive, so a slow reply does not look like a frozen bot. */
 #define CAP_IM_TG_ANIM_INTERVAL_MS    3000
 #define CAP_IM_TG_ANIM_TRACK_WIDTH    8
